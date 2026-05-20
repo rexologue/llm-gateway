@@ -1,0 +1,66 @@
+name: vllm-gateway-traces
+
+services:
+  tempo:
+    # Pinned to a conservative monolithic Tempo release for a small local stack.
+    # Override TEMPO_IMAGE if you validate another version for your environment.
+    image: ${TEMPO_IMAGE:-grafana/tempo:2.9.1}
+    container_name: vllm-gateway-tempo
+    restart: unless-stopped
+    command: ["-target=all", "-config.file=/etc/tempo/tempo.yaml"]
+
+    ports:
+      - "0.0.0.0:3200:3200"
+
+    volumes:
+      - ./configs/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo-data:/var/tempo
+
+
+  otel-collector:
+    image: ${OTEL_COLLECTOR_IMAGE:-otel/opentelemetry-collector-contrib:0.152.0}
+    container_name: vllm-gateway-otel-collector
+    restart: unless-stopped
+    command: ["--config=/etc/otelcol/config.yaml"]
+
+    depends_on:
+      - tempo
+
+    ports:
+      - "0.0.0.0:4317:4317"
+      - "0.0.0.0:4318:4318"
+      - "0.0.0.0:13133:13133"
+
+    volumes:
+      - ./configs/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+
+
+  grafana:
+    # Override GRAFANA_IMAGE if your registry policy requires another pinned tag.
+    image: ${GRAFANA_IMAGE:-grafana/grafana:12.3.0}
+    container_name: vllm-gateway-grafana
+    restart: unless-stopped
+
+    depends_on:
+      - tempo
+
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_USERS_DEFAULT_THEME: "light"
+
+    ports:
+      - "0.0.0.0:3000:3000"
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./configs/grafana/provisioning:/etc/grafana/provisioning:ro
+
+
+volumes:
+  tempo-data:
+  grafana-data:

@@ -1,0 +1,108 @@
+# Отключаем multi-tenant режим.
+# Для одного сервера и одного логического "клиента" это самый простой вариант:
+# Loki не будет требовать tenant ID в запросах.
+auth_enabled: false
+
+server:
+  # HTTP-порт Loki API.
+  # Сюда будут ходить Grafana, Alloy/Promtail и любые клиенты Loki API.
+  http_listen_port: 3100
+
+  # Уровень логов самого Loki.
+  # info — нормальный рабочий режим без лишнего шума.
+  log_level: info
+
+common:
+  # Общий корневой путь для служебных файлов Loki.
+  # Удобно монтировать один persistent volume целиком в /loki.
+  path_prefix: /loki
+
+  # Для одного инстанса Loki репликация должна быть 1.
+  replication_factor: 1
+
+  ring:
+    # Для single-node полезно явно указать loopback-адрес инстанса.
+    # Это типичный паттерн для локального/монолитного Loki.
+    instance_addr: 127.0.0.1
+
+    kvstore:
+      # Ring хранится в памяти процесса.
+      # Для одного сервиса/одного сервера этого достаточно.
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2024-01-01
+      # TSDB — рекомендуемый storage/index режим для современных версий Loki.
+      store: tsdb
+
+      # Храним объекты локально на файловой системе сервера.
+      # Для single-node это самый простой вариант.
+      object_store: filesystem
+
+      # Актуальная схема хранения для TSDB.
+      schema: v13
+
+      index:
+        # Префикс файлов индекса.
+        prefix: index_
+
+        # Период индекса — сутки.
+        # Для retention через compactor это корректный и стандартный вариант.
+        period: 24h
+
+storage_config:
+  filesystem:
+    # Каталог, где Loki будет хранить chunks с логами.
+    # Этот путь должен жить на persistent storage.
+    directory: /loki/chunks
+
+ingester:
+  wal:
+    # WAL помогает переживать рестарты/сбои с меньшим риском потери свежих логов.
+    enabled: true
+
+    # Каталог WAL.
+    # Тоже должен быть на persistent storage.
+    dir: /loki/wal
+
+limits_config:
+  # Разрешаем structured metadata.
+  # Это полезно для современных сценариев анализа логов в Grafana/Loki.
+  allow_structured_metadata: true
+
+  # Не отбрасывать "старые" записи по timestamp.
+  # Удобно, если логи могут доезжать с задержкой.
+  reject_old_samples: false
+
+  # Включает volume-related возможности для Grafana/Loki UI.
+  volume_enabled: true
+
+  # Хранить логи 30 дней.
+  # Важно: retention реально заработает только если ниже включён compactor.retention_enabled.
+  retention_period: 30d
+
+compactor:
+  # Рабочая директория compactor.
+  # Здесь Loki будет хранить служебные файлы compaction/retention.
+  working_directory: /loki/compactor
+
+  # Как часто запускать compaction.
+  # 10m — дефолтное и нормальное значение.
+  compaction_interval: 10m
+
+  # ВКЛЮЧАЕМ retention.
+  # Без этого retention_period не будет применяться.
+  retention_enabled: true
+
+  # Задержка перед физическим удалением чанков после пометки на удаление.
+  # 2h — стандартное дефолтное значение.
+  retention_delete_delay: 2h
+
+  # Хранилище для delete requests.
+  # Для filesystem/single-node логично тоже использовать filesystem.
+  delete_request_store: filesystem
+
+analytics:
+  # Отключаем отправку usage/reporting telemetry.
+  reporting_enabled: false

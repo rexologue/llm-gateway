@@ -1,0 +1,169 @@
+services:
+  vllm-gateway:
+    build:
+      context: ./gateway
+
+    container_name: vllm-gateway
+    restart: unless-stopped
+
+    depends_on:
+      vllm:
+        condition: service_healthy
+      vllm-gateway-loki:
+        condition: service_started
+      vllm-gateway-valkey:
+        condition: service_started
+
+    environment:
+      GATEWAY_HOST: "0.0.0.0"
+      GATEWAY_PORT: "8080"
+      GATEWAY_UPSTREAM_BASE_URL: "http://vllm:8000"
+      GATEWAY_ENABLE_MAX_COMPLETION_TOKENS_OVERRIDE: "true"
+      GATEWAY_FORCED_MAX_COMPLETION_TOKENS: "1024"
+      GATEWAY_ENV: "local"
+      GATEWAY_REQUEST_LOG_LABEL: "vllm-gateway"
+      GATEWAY_TIMEOUT_CONNECT_SEC: "30"
+      GATEWAY_TIMEOUT_READ_SEC: "1800"
+      GATEWAY_TIMEOUT_WRITE_SEC: "1800"
+      GATEWAY_TIMEOUT_POOL_SEC: "30"
+      GATEWAY_HTTP_MAX_CONNECTIONS: "200"
+      GATEWAY_HTTP_MAX_KEEPALIVE_CONNECTIONS: "100"
+      LOKI_PUSH_URL: "http://vllm-gateway-loki:3100/loki/api/v1/push"
+      LOKI_ENABLED: "true"
+      LOKI_BATCH_SIZE: "200"
+      LOKI_FLUSH_INTERVAL_SEC: "1.0"
+      LOKI_QUEUE_MAX_SIZE: "10000"
+      LOG_BODY_SHA256: "false"
+      OTEL_ENABLED: "true"
+      OTEL_SERVICE_NAME: "vllm-gateway"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://host.docker.internal:4317"
+      OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
+      OTEL_SAMPLE_RATIO: "1.0"
+      OTEL_FASTAPI_EXCLUDED_URLS: "/metrics,/gateway/metrics,/healthz,/$"
+      SESSION_VALKEY_URL: "redis://vllm-gateway-valkey:6379/0"
+      SESSION_KEY_PREFIX: "vllm-gateway:session:"
+      SESSION_TTL: "21600"
+      SESSION_TRACKER_MAX_CONNECTIONS: "256"
+
+    ports:
+      - "0.0.0.0:9090:8080"
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    networks:
+      - backend
+
+
+  vllm-gateway-valkey:
+    image: valkey/valkey:9.0-alpine
+    container_name: vllm-gateway-valkey
+    restart: unless-stopped
+    command: ["valkey-server", "/usr/local/etc/valkey/valkey.conf"]
+
+    volumes:
+      - ./configs/valkey.conf:/usr/local/etc/valkey/valkey.conf:ro
+      - vllm-gateway-valkey-data:/data
+
+    networks:
+      - backend
+
+
+  vllm:
+    image: vllm/vllm-openai:v0.19.0
+    container_name: vllm
+    restart: unless-stopped
+    entrypoint: ["/bin/bash", "-lc"]
+    command: ["bash /serve_vllm.sh"]
+    runtime: nvidia
+
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/v1/models >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+    volumes:
+      - /root/.models/Qwen3.5-35B-A3B-FP8:/model:ro
+      - ./serve_vllm.sh:/serve_vllm.sh:ro
+
+    networks:
+      - backend
+
+
+  vllm-gateway-loki:
+    image: grafana/loki:3.7.1
+    container_name: vllm-gateway-loki
+    restart: unless-stopped
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+
+    ports:
+      - "0.0.0.0:9092:3100"
+
+    volumes:
+      - ./configs/loki-config.yaml:/etc/loki/local-config.yaml:ro
+      - vllm-gateway-loki-data:/loki
+
+    networks:
+      - backend
+
+
+  vllm-prometheus:
+    image: prom/prometheus:latest
+    container_name: vllm-prometheus
+    restart: unless-stopped
+
+    ports:
+      - "0.0.0.0:9091:9090"
+      
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+
+    volumes:
+      - ./configs/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - vllm-prometheus-data:/prometheus
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    networks:
+      - backend
+
+
+  vllm-hardware-node-exporter:
+    image: prom/node-exporter:latest
+    container_name: vllm-hardware-node-exporter
+    restart: unless-stopped
+    network_mode: host
+    pid: host
+
+    command:
+      - --path.rootfs=/host
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+
+    volumes:
+      - /:/host:ro,rslave
+
+
+  vllm-hardware-dcgm-exporter:
+    image: nvidia/dcgm-exporter:latest
+    container_name: vllm-hardware-dcgm-exporter
+    restart: unless-stopped
+    runtime: nvidia
+
+    networks:
+      - backend
+
+
+volumes:
+  vllm-gateway-loki-data:
+  vllm-prometheus-data:
+  vllm-gateway-valkey-data:
+
+
+networks:
+  backend:
+    driver: bridge
