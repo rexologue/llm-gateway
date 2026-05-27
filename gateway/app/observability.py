@@ -53,22 +53,10 @@ SESSION_REQUEST_COUNTER = Counter(
     ["route", "method", "stream", "session_present", "session_first_request"],
 )
 
-SESSION_ID_MISSING_COUNTER = Counter(
-    "gateway_session_id_missing_total",
-    "Requests without X-Session-ID header",
-    ["route", "method", "stream"],
-)
-
 SESSION_TRACKER_ERRORS_COUNTER = Counter(
     "gateway_session_tracker_errors_total",
     "Session tracker failures while checking or refreshing session state",
     ["operation", "error_type"],
-)
-
-SESSION_INIT_TTFT_MISSING_COUNTER = Counter(
-    "gateway_session_init_ttft_missing_total",
-    "First session requests where TTFT could not be observed",
-    ["route", "method", "stream", "model", "reason", "result"],
 )
 
 

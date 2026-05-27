@@ -37,11 +37,6 @@ directly from the selected backend service.
 - Labels: `route`, `method`, `stream`, `session_present`,
   `session_first_request`.
 
-`gateway_session_id_missing_total`
-
-- Chat completion requests without a non-empty `X-Session-ID`.
-- Labels: `route`, `method`, `stream`.
-
 `gateway_session_tracker_errors_total`
 
 - Valkey/Redis session tracker failures.
@@ -52,11 +47,6 @@ directly from the selected backend service.
 - Time from gateway request start to first non-empty streamed backend chunk for
   the first observed request in a session.
 - Labels: `route`, `method`, `stream`, `model`, `status_family`, `result`.
-
-`gateway_session_init_ttft_missing_total`
-
-- First-session requests where TTFT could not be observed.
-- Labels: `route`, `method`, `stream`, `model`, `reason`, `result`.
 
 `gateway_session_init_e2e_latency_seconds`
 

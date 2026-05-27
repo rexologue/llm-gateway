@@ -25,10 +25,8 @@ from app.log_payloads import build_error_event, build_request_event, build_respo
 from app.observability import (
     REQUEST_COUNTER,
     REQUEST_LATENCY,
-    SESSION_ID_MISSING_COUNTER,
     SESSION_INIT_E2E_LATENCY,
     SESSION_INIT_TTFT,
-    SESSION_INIT_TTFT_MISSING_COUNTER,
     SESSION_REQUEST_COUNTER,
     uptime_seconds,
 )
@@ -209,13 +207,6 @@ def _record_session_counters(
     session_id: str | None,
     session_first_request: bool,
 ) -> None:
-    if session_id is None:
-        SESSION_ID_MISSING_COUNTER.labels(
-            route=route,
-            method=method,
-            stream=_bool_label(stream),
-        ).inc()
-
     SESSION_REQUEST_COUNTER.labels(
         route=route,
         method=method,
@@ -249,30 +240,6 @@ def _observe_session_e2e(
             cancelled=cancelled,
         )
     ).observe(duration_sec)
-
-
-def _observe_session_ttft_missing(
-    *,
-    session_first_request: bool,
-    route: str,
-    method: str,
-    stream: bool,
-    model: str,
-    reason: str,
-    status_code: int | None,
-    cancelled: bool,
-) -> None:
-    if not session_first_request:
-        return
-
-    SESSION_INIT_TTFT_MISSING_COUNTER.labels(
-        route=route,
-        method=method,
-        stream=_bool_label(stream),
-        model=model,
-        reason=reason,
-        result=result_from_status(status_code, cancelled),
-    ).inc()
 
 
 async def _log_gateway_error(
@@ -456,16 +423,6 @@ def create_router() -> APIRouter:
                     cancelled=False,
                     duration_sec=duration_sec,
                 )
-                _observe_session_ttft_missing(
-                    session_first_request=session_first_request,
-                    route=route,
-                    method=method,
-                    stream=stream,
-                    model=model,
-                    reason="non_stream",
-                    status_code=status_code,
-                    cancelled=False,
-                )
 
             return Response(
                 content=response_body,
@@ -581,16 +538,6 @@ def create_router() -> APIRouter:
                     cancelled=True,
                     duration_sec=duration_sec,
                 )
-                _observe_session_ttft_missing(
-                    session_first_request=session_first_request,
-                    route=route,
-                    method=method,
-                    stream=True,
-                    model=model,
-                    reason="cancelled_before_first_chunk",
-                    status_code=None,
-                    cancelled=True,
-                )
                 request_span.end()
                 raise
 
@@ -628,16 +575,6 @@ def create_router() -> APIRouter:
                     status_code=None,
                     cancelled=False,
                     duration_sec=duration_sec,
-                )
-                _observe_session_ttft_missing(
-                    session_first_request=session_first_request,
-                    route=route,
-                    method=method,
-                    stream=True,
-                    model=model,
-                    reason="error_before_first_chunk",
-                    status_code=None,
-                    cancelled=False,
                 )
                 request_span.end()
                 raise
@@ -783,24 +720,6 @@ def create_router() -> APIRouter:
                                         error=stream_error,
                                         duration_sec=duration_sec,
                                     )
-                                if ttft_sec is None:
-                                    if cancelled:
-                                        ttft_missing_reason = "cancelled_before_first_chunk"
-                                    elif stream_error is not None:
-                                        ttft_missing_reason = "error_before_first_chunk"
-                                    else:
-                                        ttft_missing_reason = "no_chunk"
-
-                                    _observe_session_ttft_missing(
-                                        session_first_request=session_first_request,
-                                        route=route,
-                                        method=method,
-                                        stream=True,
-                                        model=model,
-                                        reason=ttft_missing_reason,
-                                        status_code=metric_status_code,
-                                        cancelled=cancelled,
-                                    )
                                 REQUEST_LATENCY.labels(
                                     route=route,
                                     method=method,
@@ -929,16 +848,6 @@ def create_router() -> APIRouter:
                     cancelled=False,
                     duration_sec=duration_sec,
                 )
-                _observe_session_ttft_missing(
-                    session_first_request=session_first_request,
-                    route=route,
-                    method=method,
-                    stream=False,
-                    model=model,
-                    reason="non_stream",
-                    status_code=status_code,
-                    cancelled=False,
-                )
 
                 return Response(
                     content=backend_response.content,
@@ -983,16 +892,6 @@ def create_router() -> APIRouter:
                     cancelled=True,
                     duration_sec=duration_sec,
                 )
-                _observe_session_ttft_missing(
-                    session_first_request=session_first_request,
-                    route=route,
-                    method=method,
-                    stream=False,
-                    model=model,
-                    reason="non_stream",
-                    status_code=None,
-                    cancelled=True,
-                )
                 raise
 
             except Exception as exc:
@@ -1029,16 +928,6 @@ def create_router() -> APIRouter:
                     status_code=None,
                     cancelled=False,
                     duration_sec=duration_sec,
-                )
-                _observe_session_ttft_missing(
-                    session_first_request=session_first_request,
-                    route=route,
-                    method=method,
-                    stream=False,
-                    model=model,
-                    reason="non_stream",
-                    status_code=None,
-                    cancelled=False,
                 )
                 raise
 
