@@ -43,16 +43,42 @@ def _get_state(app: FastAPI) -> AppState:
     return cast(AppState, app.state.gateway_state)
 
 
-def apply_max_completion_tokens_override(
+def encode_payload(payload: dict[str, Any]) -> tuple[bytes, str]:
+    raw_body = orjson.dumps(payload)
+    decoded_body = raw_body.decode("utf-8")
+    return raw_body, decoded_body
+
+
+def apply_chat_payload_overrides(
     payload: dict[str, Any],
-    max_completion_tokens: int,
+    *,
+    forced_max_completion_tokens: int | None,
+    forced_thinking_disabled: bool,
 ) -> tuple[dict[str, Any], bytes, str]:
     patched = dict(payload)
-    patched["max_completion_tokens"] = max_completion_tokens
-    patched.pop("max_tokens", None)
 
-    raw_body = orjson.dumps(patched)
-    decoded_body = raw_body.decode("utf-8")
+    if forced_max_completion_tokens is not None:
+        patched["max_completion_tokens"] = forced_max_completion_tokens
+        patched.pop("max_tokens", None)
+
+    if forced_thinking_disabled:
+        patched["enable_thinking"] = False
+
+    raw_body, decoded_body = encode_payload(patched)
+    return patched, raw_body, decoded_body
+
+
+def apply_generic_payload_overrides(
+    payload: dict[str, Any],
+    *,
+    forced_thinking_disabled: bool,
+) -> tuple[dict[str, Any], bytes, str]:
+    patched = dict(payload)
+
+    if forced_thinking_disabled:
+        patched["enable_thinking"] = False
+
+    raw_body, decoded_body = encode_payload(patched)
     return patched, raw_body, decoded_body
 
 
@@ -415,10 +441,14 @@ def create_router() -> APIRouter:
                 media_type="application/json",
             )
 
-        if settings.enable_max_completion_tokens_override:
-            payload, raw_body, decoded_body = apply_max_completion_tokens_override(
+        if (
+            settings.forced_max_completion_tokens is not None
+            or settings.forced_thinking_disabled
+        ):
+            payload, raw_body, decoded_body = apply_chat_payload_overrides(
                 payload,
-                settings.forced_max_completion_tokens,
+                forced_max_completion_tokens=settings.forced_max_completion_tokens,
+                forced_thinking_disabled=settings.forced_thinking_disabled,
             )
 
         stream = bool(payload.get("stream"))
@@ -998,6 +1028,11 @@ def create_router() -> APIRouter:
         session_id = session_id_from_headers(headers_in)
         session_first_request = False
         payload = parse_json_maybe(decoded_body)
+        if isinstance(payload, dict) and settings.forced_thinking_disabled:
+            payload, raw_body, decoded_body = apply_generic_payload_overrides(
+                payload,
+                forced_thinking_disabled=settings.forced_thinking_disabled,
+            )
 
         backend_headers = state.backend.forwarded_headers(
             headers_in,

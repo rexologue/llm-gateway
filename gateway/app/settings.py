@@ -21,6 +21,16 @@ def _get_bool_env(name: str, default: bool) -> bool:
     return value.strip().lower() == "true"
 
 
+def _get_optional_int_env(name: str) -> int | None:
+    """Return an integer environment variable when it is set and non-empty."""
+
+    value = os.getenv(name)
+    if value is None or value.strip() == "":
+        return None
+
+    return int(value)
+
+
 @dataclass(frozen=True, slots=True)
 class Settings:
     """Typed runtime configuration for the gateway process.
@@ -32,8 +42,8 @@ class Settings:
 
     # Backend routing and request shaping.
     backend_base_url: str
-    enable_max_completion_tokens_override: bool
-    forced_max_completion_tokens: int
+    forced_max_completion_tokens: int | None
+    forced_thinking_disabled: bool
 
     # Gateway HTTP client limits.
     connect_timeout: float
@@ -80,12 +90,12 @@ class Settings:
                 "GATEWAY_BACKEND_BASE_URL",
                 "http://backend:8000",
             ).rstrip("/"),
-            enable_max_completion_tokens_override=_get_bool_env(
-                "GATEWAY_ENABLE_MAX_COMPLETION_TOKENS_OVERRIDE",
-                False,
+            forced_max_completion_tokens=_get_optional_int_env(
+                "GATEWAY_FORCED_MAX_COMPLETION_TOKENS"
             ),
-            forced_max_completion_tokens=int(
-                os.getenv("GATEWAY_FORCED_MAX_COMPLETION_TOKENS", "1024")
+            forced_thinking_disabled=_get_bool_env(
+                "GATEWAY_FORCED_THINKING_DISABLED",
+                False,
             ),
 
             # Gateway HTTP client limits.

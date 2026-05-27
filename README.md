@@ -91,8 +91,8 @@ Generic proxying also supports routes such as:
 | --- | --- | --- |
 | `GATEWAY_HOST` | Host address used by Compose port bindings | `0.0.0.0` |
 | `GATEWAY_BACKEND_BASE_URL` | OpenAI-compatible backend base URL | `http://backend:8000` |
-| `GATEWAY_ENABLE_MAX_COMPLETION_TOKENS_OVERRIDE` | Force `max_completion_tokens` on chat requests | `false` |
-| `GATEWAY_FORCED_MAX_COMPLETION_TOKENS` | Forced value when override is enabled | `1024` |
+| `GATEWAY_FORCED_MAX_COMPLETION_TOKENS` | Optional forced `max_completion_tokens` on chat requests | unset |
+| `GATEWAY_FORCED_THINKING_DISABLED` | Force `enable_thinking=false` on JSON request payloads | `false` |
 | `GATEWAY_LOKI_APP_NAME` | Loki `app` label | `llm-gateway` |
 | `GATEWAY_LOKI_ENABLED` | Enable Loki event delivery | `true` |
 | `GATEWAY_LOKI_PUSH_URL` | Loki Push API URL | `http://llm-gateway-loki:3100/loki/api/v1/push` |
