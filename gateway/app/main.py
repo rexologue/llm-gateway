@@ -30,6 +30,7 @@ def create_app() -> FastAPI:
         finally:
             await state.loki_sink.stop()
             await state.session_tracker.close()
+            await state.session_store.close()
             await state.http.aclose()
 
     application = FastAPI(title="OpenAI Compatible Gateway", lifespan=lifespan)

@@ -11,6 +11,7 @@ import httpx
 from app.backend import OpenAICompatibleBackend
 from app.event_sinks import LokiSink
 from app.http_utils import utc_now_iso
+from app.session_store import SessionStore
 from app.session_tracker import SessionTracker
 from app.settings import Settings
 from app.tracing import current_trace_context
@@ -25,6 +26,7 @@ class AppState:
     backend: OpenAICompatibleBackend
     loki_sink: LokiSink
     session_tracker: SessionTracker
+    session_store: SessionStore
 
     async def log_event(self, **event: Any) -> None:
         """Attach timestamps and enqueue an event for Loki delivery."""
@@ -65,10 +67,16 @@ def create_app_state(settings: Settings) -> AppState:
         loki_app_name=settings.loki_app_name,
     )
     session_tracker = SessionTracker(
-        api_url=settings.session_valkey_url,
+        api_url=settings.session_runtime_valkey_url,
         prefix=settings.session_key_prefix,
         ttl_sec=settings.session_ttl_sec,
         max_connections=settings.session_tracker_max_connections,
+    )
+    session_store = SessionStore(
+        api_url=settings.session_store_valkey_url,
+        prefix=settings.session_store_key_prefix,
+        ttl_sec=settings.session_store_ttl_sec,
+        max_connections=settings.session_store_max_connections,
     )
     return AppState(
         settings=settings,
@@ -76,4 +84,5 @@ def create_app_state(settings: Settings) -> AppState:
         backend=backend,
         loki_sink=loki_sink,
         session_tracker=session_tracker,
+        session_store=session_store,
     )

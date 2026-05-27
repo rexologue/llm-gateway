@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from urllib.parse import urlsplit, urlunsplit
 
 
 def _get_bool_env(name: str, default: bool) -> bool:
@@ -29,6 +30,13 @@ def _get_optional_int_env(name: str) -> int | None:
         return None
 
     return int(value)
+
+
+def _valkey_url_for_db(url: str, db: int) -> str:
+    """Return a Valkey URL that points at the requested logical database."""
+
+    parts = urlsplit(url)
+    return urlunsplit((parts.scheme, parts.netloc, f"/{db}", parts.query, parts.fragment))
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,10 +78,17 @@ class Settings:
     otel_fastapi_excluded_urls: str
 
     # Session state.
-    session_valkey_url: str
+    valkey_url: str
+    session_runtime_valkey_url: str
     session_key_prefix: str
     session_ttl_sec: int
     session_tracker_max_connections: int
+
+    # Persisted chat sessions.
+    session_store_valkey_url: str
+    session_store_key_prefix: str
+    session_store_ttl_sec: int
+    session_store_max_connections: int
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -82,6 +97,10 @@ class Settings:
         otel_sample_ratio = max(
             0.0,
             min(1.0, float(os.getenv("GATEWAY_OTEL_SAMPLE_RATIO", "1.0"))),
+        )
+        valkey_url = os.getenv(
+            "GATEWAY_VALKEY_URL",
+            "redis://llm-gateway-valkey:6379",
         )
 
         return cls(
@@ -139,10 +158,8 @@ class Settings:
             ),
 
             # Session state.
-            session_valkey_url=os.getenv(
-                "GATEWAY_SESSION_VALKEY_URL",
-                "redis://llm-gateway-valkey:6379/0",
-            ),
+            valkey_url=valkey_url,
+            session_runtime_valkey_url=_valkey_url_for_db(valkey_url, 0),
             session_key_prefix=os.getenv(
                 "GATEWAY_SESSION_KEY_PREFIX",
                 "llm-gateway:session:",
@@ -150,5 +167,16 @@ class Settings:
             session_ttl_sec=int(os.getenv("GATEWAY_SESSION_TTL", "21600")),
             session_tracker_max_connections=int(
                 os.getenv("GATEWAY_SESSION_TRACKER_MAX_CONNECTIONS", "256")
+            ),
+
+            # Persisted chat sessions.
+            session_store_valkey_url=_valkey_url_for_db(valkey_url, 1),
+            session_store_key_prefix=os.getenv(
+                "GATEWAY_SESSION_STORE_KEY_PREFIX",
+                "llm-gateway:session-store:",
+            ),
+            session_store_ttl_sec=int(os.getenv("GATEWAY_SESSION_STORE_TTL", "1296000")),
+            session_store_max_connections=int(
+                os.getenv("GATEWAY_SESSION_STORE_MAX_CONNECTIONS", "256")
             ),
         )

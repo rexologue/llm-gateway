@@ -9,6 +9,7 @@ from typing import Any, AsyncIterator, cast
 
 import orjson
 from fastapi import APIRouter, FastAPI, Request, Response
+from redis.exceptions import RedisError
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from opentelemetry import trace
 from opentelemetry.trace import Span, Status, StatusCode
@@ -321,6 +322,39 @@ def create_router() -> APIRouter:
 
         return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
+    @router.get("/gateway/session_list")
+    async def session_list(request: Request) -> JSONResponse:
+        """Return ids for all persisted chat sessions."""
+
+        state = _get_state(request.app)
+        try:
+            session_ids = await state.session_store.list_session_ids()
+        except RedisError as exc:
+            return JSONResponse(
+                {"error": "session store unavailable", "detail": type(exc).__name__},
+                status_code=503,
+            )
+
+        return JSONResponse(session_ids)
+
+    @router.get("/gateway/session/{session_id}")
+    async def session_get(session_id: str, request: Request) -> JSONResponse:
+        """Return one persisted chat session by external session id."""
+
+        state = _get_state(request.app)
+        try:
+            session = await state.session_store.get_session(session_id)
+        except RedisError as exc:
+            return JSONResponse(
+                {"error": "session store unavailable", "detail": type(exc).__name__},
+                status_code=503,
+            )
+
+        if session is None:
+            return JSONResponse({"error": "session not found"}, status_code=404)
+
+        return JSONResponse(session)
+
     @router.api_route("/v1/chat/completions", methods=["POST"])
     async def chat_completions(request: Request) -> Response:
         state = _get_state(request.app)
@@ -449,6 +483,8 @@ def create_router() -> APIRouter:
                 forced_max_completion_tokens=settings.forced_max_completion_tokens,
                 forced_thinking_disabled=settings.forced_thinking_disabled,
             )
+
+        await state.session_store.save_messages(session_id, payload.get("messages"))
 
         stream = bool(payload.get("stream"))
         model = _model_label(payload)

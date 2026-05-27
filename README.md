@@ -97,8 +97,18 @@ Generic proxying also supports routes such as:
 | `GATEWAY_LOKI_ENABLED` | Enable Loki event delivery | `true` |
 | `GATEWAY_LOKI_PUSH_URL` | Loki Push API URL | `http://llm-gateway-loki:3100/loki/api/v1/push` |
 | `GATEWAY_OTEL_ENABLED` | Enable OpenTelemetry tracing | `false` |
-| `GATEWAY_SESSION_VALKEY_URL` | Valkey/Redis URL for session state | `redis://llm-gateway-valkey:6379/0` |
+| `GATEWAY_VALKEY_URL` | Valkey/Redis base URL; runtime uses DB 0 and stored chats use DB 1 | `redis://llm-gateway-valkey:6379` |
 | `GATEWAY_SESSION_TTL` | Sliding session TTL in seconds | `21600` |
+| `GATEWAY_SESSION_STORE_TTL` | Stored chat session TTL in seconds | `1296000` |
+
+## Sessions
+
+When a `/v1/chat/completions` request includes `X-Session-ID`, the gateway stores
+that request's `messages` array in Valkey DB 1. Later requests with the same
+session id overwrite the stored record and refresh the TTL.
+
+- `GET /gateway/session_list` returns all stored session ids.
+- `GET /gateway/session/{session_id}` returns one stored session record.
 
 ## Logs
 
