@@ -1,8 +1,7 @@
 # Deployment Notes
 
-The project has three deployment entry points:
+The project has two backend deployment entry points:
 
-- `docker-compose.yaml` - backend-neutral gateway stack.
 - `deploy/docker-compose.vllm.yaml` - gateway plus a vLLM backend.
 - `deploy/docker-compose.sglang.yaml` - gateway plus an SGLang backend.
 
@@ -10,29 +9,20 @@ The trace/Grafana stack is separate:
 
 - `observability/docker-compose.yaml` - Tempo, OpenTelemetry Collector, Grafana.
 
-## Backend-Neutral Stack
-
-Run the gateway against any OpenAI-compatible backend:
+Before starting a backend stack, create a local deployment env file:
 
 ```bash
-GATEWAY_BACKEND_BASE_URL=http://host.docker.internal:8000 docker compose up -d
+cp deploy/.env.example deploy/.env
 ```
 
-This stack starts:
-
-- `llm-gateway`
-- `llm-gateway-valkey`
-- `llm-gateway-loki`
-- `llm-prometheus`
-- host and GPU exporters
-
-Prometheus scrapes only gateway, host, and GPU metrics in this generic stack.
-Backend metrics must be added through a backend-specific scrape config.
+Then edit `deploy/.env` and replace dummy values such as model paths, ports, image
+tags, backend URLs, and Grafana credentials for your host.
 
 ## vLLM Variant
 
 ```bash
-docker compose -f deploy/docker-compose.vllm.yaml up -d
+cd deploy
+docker compose -f docker-compose.vllm.yaml up -d
 ```
 
 This variant sets:
@@ -53,7 +43,8 @@ The vLLM launch script is `deploy/serve_vllm.sh`.
 ## SGLang Variant
 
 ```bash
-docker compose -f deploy/docker-compose.sglang.yaml up -d
+cd deploy
+docker compose -f docker-compose.sglang.yaml up -d
 ```
 
 This variant sets:
@@ -74,7 +65,7 @@ The SGLang launch script is `deploy/serve_sglang.sh`.
 ## Observability Stack
 
 ```bash
-docker compose -f observability/docker-compose.yaml up -d
+docker compose --env-file deploy/.env -f observability/docker-compose.yaml up -d
 ```
 
 The gateway variants send OTLP traces to `host.docker.internal:4317`, so this
@@ -92,10 +83,11 @@ Useful URLs:
 ## Validation
 
 ```bash
-docker compose config
-docker compose -f deploy/docker-compose.vllm.yaml config
-docker compose -f deploy/docker-compose.sglang.yaml config
-docker compose -f observability/docker-compose.yaml config
+cd deploy
+docker compose -f docker-compose.vllm.yaml config
+docker compose -f docker-compose.sglang.yaml config
+cd ..
+docker compose --env-file deploy/.env -f observability/docker-compose.yaml config
 ```
 
 Smoke checks after startup:

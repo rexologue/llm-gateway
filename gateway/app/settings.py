@@ -64,7 +64,10 @@ class Settings:
     def from_env(cls) -> "Settings":
         """Build settings from environment variables with production defaults."""
 
-        otel_sample_ratio = max(0.0, min(1.0, float(os.getenv("OTEL_SAMPLE_RATIO", "1.0"))))
+        otel_sample_ratio = max(
+            0.0,
+            min(1.0, float(os.getenv("GATEWAY_OTEL_SAMPLE_RATIO", "1.0"))),
+        )
 
         return cls(
             host=os.getenv("GATEWAY_HOST", "0.0.0.0"),
@@ -90,34 +93,42 @@ class Settings:
             http_max_keepalive_connections=int(
                 os.getenv("GATEWAY_HTTP_MAX_KEEPALIVE_CONNECTIONS", "100")
             ),
-            loki_enabled=_get_bool_env("LOKI_ENABLED", True),
+            loki_enabled=_get_bool_env("GATEWAY_LOKI_ENABLED", True),
             loki_push_url=os.getenv(
-                "LOKI_PUSH_URL",
+                "GATEWAY_LOKI_PUSH_URL",
                 "http://llm-gateway-loki:3100/loki/api/v1/push",
             ),
-            loki_batch_size=int(os.getenv("LOKI_BATCH_SIZE", "200")),
-            loki_flush_interval_sec=float(os.getenv("LOKI_FLUSH_INTERVAL_SEC", "1.0")),
-            loki_queue_max_size=int(os.getenv("LOKI_QUEUE_MAX_SIZE", "10000")),
-            log_body_sha256=_get_bool_env("LOG_BODY_SHA256", True),
-            otel_enabled=_get_bool_env("OTEL_ENABLED", False),
-            otel_service_name=os.getenv("OTEL_SERVICE_NAME", "llm-gateway"),
+            loki_batch_size=int(os.getenv("GATEWAY_LOKI_BATCH_SIZE", "200")),
+            loki_flush_interval_sec=float(
+                os.getenv("GATEWAY_LOKI_FLUSH_INTERVAL_SEC", "1.0")
+            ),
+            loki_queue_max_size=int(os.getenv("GATEWAY_LOKI_QUEUE_MAX_SIZE", "10000")),
+            log_body_sha256=_get_bool_env("GATEWAY_LOG_BODY_SHA256", True),
+            otel_enabled=_get_bool_env("GATEWAY_OTEL_ENABLED", False),
+            otel_service_name=os.getenv("GATEWAY_OTEL_SERVICE_NAME", "llm-gateway"),
             otel_exporter_otlp_endpoint=os.getenv(
-                "OTEL_EXPORTER_OTLP_ENDPOINT",
+                "GATEWAY_OTEL_EXPORTER_OTLP_ENDPOINT",
                 "http://otel-collector:4317",
             ),
-            otel_exporter_otlp_protocol=os.getenv("OTEL_EXPORTER_OTLP_PROTOCOL", "grpc"),
+            otel_exporter_otlp_protocol=os.getenv(
+                "GATEWAY_OTEL_EXPORTER_OTLP_PROTOCOL",
+                "grpc",
+            ),
             otel_sample_ratio=otel_sample_ratio,
             otel_fastapi_excluded_urls=os.getenv(
-                "OTEL_FASTAPI_EXCLUDED_URLS",
+                "GATEWAY_OTEL_FASTAPI_EXCLUDED_URLS",
                 "/gateway/metrics,/healthz,/$",
             ),
             session_valkey_url=os.getenv(
-                "SESSION_VALKEY_URL",
+                "GATEWAY_SESSION_VALKEY_URL",
                 "redis://llm-gateway-valkey:6379/0",
             ),
-            session_key_prefix=os.getenv("SESSION_KEY_PREFIX", "llm-gateway:session:"),
-            session_ttl_sec=int(os.getenv("SESSION_TTL", "21600")),
+            session_key_prefix=os.getenv(
+                "GATEWAY_SESSION_KEY_PREFIX",
+                "llm-gateway:session:",
+            ),
+            session_ttl_sec=int(os.getenv("GATEWAY_SESSION_TTL", "21600")),
             session_tracker_max_connections=int(
-                os.getenv("SESSION_TRACKER_MAX_CONNECTIONS", "256")
+                os.getenv("GATEWAY_SESSION_TRACKER_MAX_CONNECTIONS", "256")
             ),
         )

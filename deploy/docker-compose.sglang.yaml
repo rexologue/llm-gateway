@@ -1,12 +1,13 @@
-name: llm-gateway-sglang
-
 services:
   llm-gateway:
     build:
       context: ../gateway
 
-    container_name: llm-gateway
+    container_name: ${GATEWAY_CONTAINER_NAME}
     restart: unless-stopped
+    
+    env_file:
+      - .env
 
     depends_on:
       sglang:
@@ -17,38 +18,10 @@ services:
         condition: service_started
 
     environment:
-      GATEWAY_HOST: "0.0.0.0"
-      GATEWAY_PORT: "8080"
-      GATEWAY_BACKEND_BASE_URL: "http://sglang:30000"
-      GATEWAY_ENABLE_MAX_COMPLETION_TOKENS_OVERRIDE: "true"
-      GATEWAY_FORCED_MAX_COMPLETION_TOKENS: "1024"
-      GATEWAY_ENV: "local"
-      GATEWAY_REQUEST_LOG_LABEL: "llm-gateway"
-      GATEWAY_TIMEOUT_CONNECT_SEC: "30"
-      GATEWAY_TIMEOUT_READ_SEC: "1800"
-      GATEWAY_TIMEOUT_WRITE_SEC: "1800"
-      GATEWAY_TIMEOUT_POOL_SEC: "30"
-      GATEWAY_HTTP_MAX_CONNECTIONS: "200"
-      GATEWAY_HTTP_MAX_KEEPALIVE_CONNECTIONS: "100"
-      LOKI_PUSH_URL: "http://llm-gateway-loki:3100/loki/api/v1/push"
-      LOKI_ENABLED: "true"
-      LOKI_BATCH_SIZE: "200"
-      LOKI_FLUSH_INTERVAL_SEC: "1.0"
-      LOKI_QUEUE_MAX_SIZE: "10000"
-      LOG_BODY_SHA256: "false"
-      OTEL_ENABLED: "true"
-      OTEL_SERVICE_NAME: "llm-gateway"
-      OTEL_EXPORTER_OTLP_ENDPOINT: "http://host.docker.internal:4317"
-      OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
-      OTEL_SAMPLE_RATIO: "1.0"
-      OTEL_FASTAPI_EXCLUDED_URLS: "/gateway/metrics,/healthz,/$"
-      SESSION_VALKEY_URL: "redis://llm-gateway-valkey:6379/0"
-      SESSION_KEY_PREFIX: "llm-gateway:session:"
-      SESSION_TTL: "21600"
-      SESSION_TRACKER_MAX_CONNECTIONS: "256"
+      GATEWAY_BACKEND_BASE_URL: ${GATEWAY_SGLANG_BACKEND_BASE_URL}
 
     ports:
-      - "0.0.0.0:9090:8080"
+      - "${GATEWAY_HOST}:${GATEWAY_HTTP_PORT}:8080"
 
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -58,17 +31,14 @@ services:
 
 
   sglang:
-    image: lmsysorg/sglang:v0.5.11
-    container_name: sglang
+    image: ${GATEWAY_SGLANG_IMAGE}
+    container_name: ${GATEWAY_SGLANG_CONTAINER_NAME}
     restart: unless-stopped
     entrypoint: ["/bin/bash", "-lc"]
     command: ["bash /serve_sglang.sh"]
     runtime: nvidia
     ipc: host
-    shm_size: "32gb"
-
-    environment:
-      - CUDA_VISIBLE_DEVICES=1
+    shm_size: ${GATEWAY_SGLANG_SHM_SIZE}
 
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:30000/v1/models >/dev/null || exit 1"]
@@ -78,10 +48,10 @@ services:
       start_period: 60s
 
     ports:
-      - "0.0.0.0:9900:30000"
+      - "${GATEWAY_HOST}:${GATEWAY_SGLANG_HTTP_PORT}:30000"
 
     volumes:
-      - /root/.models/GigaChat3.1-10B-A1.8B:/model:ro
+      - ${GATEWAY_SGLANG_MODEL_PATH}:/model:ro
       - ./serve_sglang.sh:/serve_sglang.sh:ro
       - sglang-crash-dumps:/tmp/sglang_crash_dump
 
@@ -90,8 +60,8 @@ services:
 
 
   llm-gateway-valkey:
-    image: valkey/valkey:9.0-alpine
-    container_name: llm-gateway-valkey
+    image: ${GATEWAY_VALKEY_IMAGE}
+    container_name: ${GATEWAY_VALKEY_CONTAINER_NAME}
     restart: unless-stopped
     command: ["valkey-server", "/usr/local/etc/valkey/valkey.conf"]
 
@@ -104,13 +74,13 @@ services:
 
 
   llm-gateway-loki:
-    image: grafana/loki:3.7.1
-    container_name: llm-gateway-loki
+    image: ${GATEWAY_LOKI_IMAGE}
+    container_name: ${GATEWAY_LOKI_CONTAINER_NAME}
     restart: unless-stopped
     command: ["-config.file=/etc/loki/local-config.yaml"]
 
     ports:
-      - "0.0.0.0:9092:3100"
+      - "${GATEWAY_HOST}:${GATEWAY_LOKI_HTTP_PORT}:3100"
 
     volumes:
       - ../configs/loki-config.yaml:/etc/loki/local-config.yaml:ro
@@ -121,12 +91,12 @@ services:
 
 
   llm-prometheus:
-    image: prom/prometheus:latest
-    container_name: llm-prometheus
+    image: ${GATEWAY_PROMETHEUS_IMAGE}
+    container_name: ${GATEWAY_PROMETHEUS_CONTAINER_NAME}
     restart: unless-stopped
 
     ports:
-      - "0.0.0.0:9091:9090"
+      - "${GATEWAY_HOST}:${GATEWAY_PROMETHEUS_HTTP_PORT}:9090"
 
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
@@ -143,9 +113,9 @@ services:
       - backend
 
 
-  llm-hardware-node-exporter:
-    image: prom/node-exporter:latest
-    container_name: llm-hardware-node-exporter
+  llm-node-exporter:
+    image: ${GATEWAY_NODE_EXPORTER_IMAGE}
+    container_name: ${GATEWAY_NODE_EXPORTER_CONTAINER_NAME}
     restart: unless-stopped
     network_mode: host
     pid: host
@@ -159,9 +129,9 @@ services:
       - /:/host:ro,rslave
 
 
-  llm-hardware-dcgm-exporter:
-    image: nvidia/dcgm-exporter:latest
-    container_name: llm-hardware-dcgm-exporter
+  llm-dcgm-exporter:
+    image: ${GATEWAY_DCGM_EXPORTER_IMAGE}
+    container_name: ${GATEWAY_DCGM_EXPORTER_CONTAINER_NAME}
     restart: unless-stopped
     runtime: nvidia
 

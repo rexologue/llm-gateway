@@ -28,28 +28,31 @@ observability/    Tempo, OpenTelemetry Collector, and Grafana stack
 
 ## Running
 
-Generic gateway stack without a bundled backend:
+Create deployment settings first:
 
 ```bash
-GATEWAY_BACKEND_BASE_URL=http://backend:8000 docker compose up -d
+cp deploy/.env.example deploy/.env
+# edit deploy/.env
 ```
 
 vLLM variant:
 
 ```bash
-docker compose -f deploy/docker-compose.vllm.yaml up -d
+cd deploy
+docker compose -f docker-compose.vllm.yaml up -d
 ```
 
 SGLang variant:
 
 ```bash
-docker compose -f deploy/docker-compose.sglang.yaml up -d
+cd deploy
+docker compose -f docker-compose.sglang.yaml up -d
 ```
 
 Observability stack:
 
 ```bash
-docker compose -f observability/docker-compose.yaml up -d
+docker compose --env-file deploy/.env -f observability/docker-compose.yaml up -d
 ```
 
 Default ports:
@@ -83,15 +86,16 @@ Generic proxying also supports routes such as:
 
 | Variable | Meaning | Default |
 | --- | --- | --- |
+| `GATEWAY_HOST` | Host address used by Compose port bindings | `0.0.0.0` |
 | `GATEWAY_BACKEND_BASE_URL` | OpenAI-compatible backend base URL | `http://backend:8000` |
 | `GATEWAY_ENABLE_MAX_COMPLETION_TOKENS_OVERRIDE` | Force `max_completion_tokens` on chat requests | `false` |
 | `GATEWAY_FORCED_MAX_COMPLETION_TOKENS` | Forced value when override is enabled | `1024` |
 | `GATEWAY_REQUEST_LOG_LABEL` | Loki `app` label | `llm-gateway` |
-| `LOKI_ENABLED` | Enable Loki event delivery | `true` |
-| `LOKI_PUSH_URL` | Loki Push API URL | `http://llm-gateway-loki:3100/loki/api/v1/push` |
-| `OTEL_ENABLED` | Enable OpenTelemetry tracing | `false` |
-| `SESSION_VALKEY_URL` | Valkey/Redis URL for session state | `redis://llm-gateway-valkey:6379/0` |
-| `SESSION_TTL` | Sliding session TTL in seconds | `21600` |
+| `GATEWAY_LOKI_ENABLED` | Enable Loki event delivery | `true` |
+| `GATEWAY_LOKI_PUSH_URL` | Loki Push API URL | `http://llm-gateway-loki:3100/loki/api/v1/push` |
+| `GATEWAY_OTEL_ENABLED` | Enable OpenTelemetry tracing | `false` |
+| `GATEWAY_SESSION_VALKEY_URL` | Valkey/Redis URL for session state | `redis://llm-gateway-valkey:6379/0` |
+| `GATEWAY_SESSION_TTL` | Sliding session TTL in seconds | `21600` |
 
 ## Logs
 
@@ -108,7 +112,7 @@ Sensitive headers such as `Authorization`, cookies, and API keys are redacted.
 
 ## Traces
 
-When `OTEL_ENABLED=true`, the gateway emits:
+When `GATEWAY_OTEL_ENABLED=true`, the gateway emits:
 
 - `llm.gateway.request` for the full gateway request;
 - `llm.backend.request` for the backend call;
