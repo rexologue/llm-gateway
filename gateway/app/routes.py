@@ -390,7 +390,6 @@ def create_router() -> APIRouter:
                         stream=stream,
                         headers_in=headers_in,
                         raw_body=raw_body,
-                        decoded_body=decoded_body,
                         payload=None,
                     )
                 )
@@ -709,7 +708,6 @@ def create_router() -> APIRouter:
                                         stream=True,
                                         headers_in=headers_in,
                                         raw_body=raw_body,
-                                        decoded_body=decoded_body,
                                         payload=payload,
                                     )
                                 )
@@ -862,7 +860,6 @@ def create_router() -> APIRouter:
                         stream=False,
                         headers_in=headers_in,
                         raw_body=raw_body,
-                        decoded_body=decoded_body,
                         payload=payload,
                     )
                 )
@@ -1065,7 +1062,6 @@ def create_router() -> APIRouter:
                 stream=False,
                 headers_in=headers_in,
                 raw_body=raw_body,
-                decoded_body=decoded_body,
                 payload=payload,
             )
         )

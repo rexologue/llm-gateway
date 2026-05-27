@@ -104,13 +104,18 @@ Generic proxying also supports routes such as:
 
 Loki event buckets:
 
-- `request_generation` for generation requests such as `/v1/chat/completions`;
+- `request_generation` for `/v1/chat/completions` requests;
 - `request_non_generation` for other `/v1/*` requests;
-- `response_backend` for backend responses;
+- `response_generation` for `/v1/chat/completions` responses that contain a model answer;
+- `response_non_generation` for all other backend responses;
 - `gateway_error` for failures before a backend response exists.
 
 Request and response events include `request_id`, optional `session_id`,
 `session_present`, `session_first_request`, `trace_id`, and `span_id`.
+Request generation events include `request_json` and `message_cnt` without logging message bodies.
+Generation response events keep the backend payload, `assistant_text`, timing, status, size, and hash fields.
+Streaming generation responses are stored as a valid JSON object containing ordered SSE events.
+Non-generation response events include sanitized JSON payloads when the backend returns JSON.
 Sensitive headers such as `Authorization`, cookies, and API keys are redacted.
 
 ## Traces

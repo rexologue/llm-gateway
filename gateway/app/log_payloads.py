@@ -6,10 +6,22 @@ from typing import Any, Mapping
 
 from app.http_utils import parse_json_maybe, sanitize_headers, sha256_hexdigest
 
-GENERATION_ROUTES = {
-    "/v1/chat/completions",
-    "/v1/completions",
-    "/v1/responses",
+GENERATION_ROUTE = "/v1/chat/completions"
+SENSITIVE_PAYLOAD_KEYS = {
+    "api_key",
+    "apikey",
+    "authorization",
+    "cookie",
+    "id_token",
+    "password",
+    "passwd",
+    "private_key",
+    "refresh_token",
+    "secret",
+    "set-cookie",
+    "token",
+    "access_key",
+    "access_token",
 }
 
 
@@ -22,7 +34,106 @@ def _compact_dict(values: Mapping[str, Any]) -> dict[str, Any]:
 def _request_bucket(route: str) -> str:
     """Return the logical Loki bucket for a request."""
 
-    return "request_generation" if route in GENERATION_ROUTES else "request_non_generation"
+    return "request_generation" if route == GENERATION_ROUTE else "request_non_generation"
+
+
+def _response_bucket(route: str) -> str:
+    """Return the logical Loki bucket for a backend response."""
+
+    return "response_generation" if route == GENERATION_ROUTE else "response_non_generation"
+
+
+def _is_sensitive_payload_key(key: str) -> bool:
+    lowered = key.lower()
+    return (
+        lowered in SENSITIVE_PAYLOAD_KEYS
+        or lowered.endswith("_api_key")
+        or lowered.endswith("_password")
+        or lowered.endswith("_secret")
+        or lowered.endswith("_token")
+    )
+
+
+def _sanitize_payload(value: Any) -> Any:
+    """Return a payload copy with common credential-bearing fields redacted."""
+
+    if isinstance(value, dict):
+        return {
+            key: "***REDACTED***" if _is_sensitive_payload_key(key) else _sanitize_payload(item)
+            for key, item in value.items()
+        }
+
+    if isinstance(value, list):
+        return [_sanitize_payload(item) for item in value]
+
+    return value
+
+
+def _payload_without_messages(value: Any) -> Any:
+    """Return a payload copy with message arrays removed from mappings."""
+
+    if isinstance(value, dict):
+        return {
+            key: _payload_without_messages(item)
+            for key, item in value.items()
+            if key != "messages"
+        }
+
+    if isinstance(value, list):
+        return [_payload_without_messages(item) for item in value]
+
+    return value
+
+
+def _stream_response_json(response_text: str) -> dict[str, Any]:
+    """Represent an SSE response body as a valid JSON-compatible object."""
+
+    events: list[dict[str, Any]] = []
+    data_lines: list[str] = []
+    event_name: str | None = None
+    done = False
+
+    def flush_event() -> None:
+        nonlocal done, event_name
+        if not data_lines:
+            event_name = None
+            return
+
+        payload_text = "\n".join(data_lines).strip()
+        data_lines.clear()
+
+        if payload_text == "[DONE]":
+            done = True
+            event_name = None
+            return
+
+        parsed_payload = parse_json_maybe(payload_text)
+        event: dict[str, Any] = {
+            "data": parsed_payload if parsed_payload is not None else payload_text,
+        }
+        if event_name is not None:
+            event["event"] = event_name
+
+        events.append(event)
+        event_name = None
+
+    for line in response_text.splitlines():
+        if not line.strip():
+            flush_event()
+            continue
+
+        if line.startswith("event:"):
+            event_name = line[6:].strip()
+        elif line.startswith("data:"):
+            data_lines.append(line[5:].lstrip())
+
+    flush_event()
+    return {
+        "format": "sse",
+        "done": done,
+        "event_count": len(events),
+        "events": events,
+    }
 
 
 def _header_summary(headers: Mapping[str, str]) -> dict[str, Any]:
@@ -68,7 +179,7 @@ def _chat_request_details(payload: dict[str, Any] | None) -> dict[str, Any]:
     return _compact_dict(
         {
             "request_model": payload.get("model"),
-            "message_count": len(messages),
+            "message_cnt": len(messages),
             "tool_message_count": tool_message_count,
             "assistant_tool_call_count": assistant_tool_call_count,
         }
@@ -221,7 +332,6 @@ def build_request_event(
     stream: bool,
     headers_in: Mapping[str, str],
     raw_body: bytes,
-    decoded_body: str,
     payload: Any | None,
 ) -> dict[str, Any]:
     """Build a compact request event for Loki."""
@@ -240,15 +350,13 @@ def build_request_event(
         **_header_summary(headers_in),
     }
 
-    if payload is not None:
-        event["request_json"] = payload
-    elif raw_body:
-        event["request_text"] = decoded_body
-
     if route == "/v1/chat/completions":
         event.update(_chat_request_details(payload if isinstance(payload, dict) else None))
     elif isinstance(payload, dict) and payload.get("model") is not None:
         event["request_model"] = payload.get("model")
+
+    if route == GENERATION_ROUTE and isinstance(payload, dict):
+        event["request_json"] = _payload_without_messages(payload)
 
     return event
 
@@ -273,14 +381,17 @@ def build_response_event(
     """Build a compact response event for Loki."""
 
     parsed_response = parse_json_maybe(response_text)
-    assistant_text = (
-        _stream_assistant_text(response_text)
-        if stream
-        else _json_assistant_text(parsed_response) or (response_text if response_text else None)
-    )
+    assistant_text = None
+    if route == GENERATION_ROUTE:
+        assistant_text = (
+            _stream_assistant_text(response_text)
+            if stream
+            else _json_assistant_text(parsed_response)
+        )
+
     event: dict[str, Any] = _compact_dict(
         {
-            "bucket": "response_backend",
+            "bucket": _response_bucket(route),
             "route": route,
             "method": method,
             "request_id": request_id,
@@ -308,10 +419,15 @@ def build_response_event(
         }
     )
 
-    if parsed_response is not None:
-        event["response_json"] = parsed_response
-    elif response_text:
-        event["response_text"] = response_text
+    if event["bucket"] == "response_generation":
+        if stream:
+            event["response_json"] = _stream_response_json(response_text)
+        elif parsed_response is not None:
+            event["response_json"] = parsed_response
+        elif response_text:
+            event["response_text"] = response_text
+    elif parsed_response is not None:
+        event["response_json"] = _sanitize_payload(parsed_response)
 
     return event
 
