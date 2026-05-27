@@ -1,4 +1,4 @@
-"""HTTP routes exposed by the gateway application."""
+"""HTTP routes exposed by the OpenAI-compatible gateway application."""
 
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ from app.observability import (
 )
 from app.state import AppState
 
-tracer = trace.get_tracer("vllm-gateway")
+tracer = trace.get_tracer("llm-gateway")
 MAX_MODEL_LABEL_LENGTH = 128
 
 
@@ -289,21 +289,6 @@ def create_router() -> APIRouter:
 
         return JSONResponse({"ok": True, "uptime_sec": round(uptime_seconds(), 3)})
 
-    @router.get("/metrics")
-    async def metrics(request: Request) -> Response:
-        """Expose upstream vLLM Prometheus metrics through the gateway."""
-
-        state = _get_state(request.app)
-        upstream_response = await state.http.get(f"{state.settings.upstream_base_url}/metrics")
-        response_headers = strip_hop_by_hop_headers(upstream_response.headers)
-
-        return Response(
-            content=upstream_response.content,
-            status_code=upstream_response.status_code,
-            headers=response_headers,
-            media_type=upstream_response.headers.get("content-type"),
-        )
-
     @router.get("/gateway/metrics")
     async def gateway_metrics() -> Response:
         """Expose Prometheus metrics collected by the gateway process."""
@@ -449,11 +434,12 @@ def create_router() -> APIRouter:
         )
         REQUEST_COUNTER.labels(route=route, method=method, stream=_bool_label(stream)).inc()
 
-        upstream_headers = strip_hop_by_hop_headers(headers_in)
-        upstream_headers["x-request-id"] = request_id
-        if session_id is not None:
-            upstream_headers["x-session-id"] = session_id
-        upstream_url = f"{settings.upstream_base_url}/v1/chat/completions"
+        backend_headers = state.backend.forwarded_headers(
+            headers_in,
+            request_id=request_id,
+            session_id=session_id,
+        )
+        backend_url = state.backend.url_for(route)
 
         if stream:
             request_span = tracer.start_span(
@@ -472,29 +458,29 @@ def create_router() -> APIRouter:
 
             try:
                 with trace.use_span(request_span, end_on_exit=False):
-                    upstream_request = state.http.build_request(
+                    backend_request = state.backend.build_request(
                         method=method,
-                        url=upstream_url,
-                        headers=upstream_headers,
+                        route=route,
+                        headers=backend_headers,
                         content=raw_body,
                     )
-                    with tracer.start_as_current_span("llm.vllm.upstream") as upstream_span:
+                    with tracer.start_as_current_span("llm.backend.request") as backend_span:
                         _set_span_attributes(
-                            upstream_span,
+                            backend_span,
                             {
                                 "http.method": method,
-                                "http.url": upstream_url,
+                                "http.url": backend_url,
                                 "http.route": route,
                                 "llm.model": model,
                                 "llm.request.body_bytes": len(raw_body),
                             },
                         )
-                        upstream_response = await state.http.send(upstream_request, stream=True)
+                        backend_response = await state.backend.send(backend_request, stream=True)
                         _set_span_attributes(
-                            upstream_span,
-                            {"http.status_code": upstream_response.status_code},
+                            backend_span,
+                            {"http.status_code": backend_response.status_code},
                         )
-                        _mark_error_if_needed(upstream_span, upstream_response.status_code)
+                        _mark_error_if_needed(backend_span, backend_response.status_code)
 
             except asyncio.CancelledError as exc:
                 duration_sec = time.perf_counter() - started_at
@@ -593,9 +579,9 @@ def create_router() -> APIRouter:
                 request_span.end()
                 raise
 
-            status_code = upstream_response.status_code
+            status_code = backend_response.status_code
             response_headers = _gateway_response_headers(
-                upstream_response.headers,
+                backend_response.headers,
                 request_id=request_id,
                 session_id=session_id,
             )
@@ -615,7 +601,7 @@ def create_router() -> APIRouter:
                     stream_span = tracer.start_span("llm.stream_response")
                     with trace.use_span(stream_span, end_on_exit=False):
                         try:
-                            async for chunk in upstream_response.aiter_bytes():
+                            async for chunk in backend_response.aiter_bytes():
                                 if chunk:
                                     chunk_count += 1
                                     response_bytes_count += len(chunk)
@@ -773,7 +759,7 @@ def create_router() -> APIRouter:
 
                             finally:
                                 try:
-                                    await upstream_response.aclose()
+                                    await backend_response.aclose()
                                 finally:
                                     stream_span.end()
                                     request_span.end()
@@ -782,7 +768,7 @@ def create_router() -> APIRouter:
                 iterator(),
                 status_code=status_code,
                 headers=response_headers,
-                media_type=upstream_response.headers.get("content-type"),
+                media_type=backend_response.headers.get("content-type"),
             )
 
         with tracer.start_as_current_span(
@@ -799,42 +785,42 @@ def create_router() -> APIRouter:
             ),
         ) as span:
             try:
-                with tracer.start_as_current_span("llm.vllm.upstream") as upstream_span:
+                with tracer.start_as_current_span("llm.backend.request") as backend_span:
                     _set_span_attributes(
-                        upstream_span,
+                        backend_span,
                         {
                             "http.method": method,
-                            "http.url": upstream_url,
+                            "http.url": backend_url,
                             "http.route": route,
                             "llm.model": model,
                             "llm.request.body_bytes": len(raw_body),
                         },
                     )
-                    upstream_response = await state.http.post(
-                        upstream_url,
-                        headers=upstream_headers,
+                    backend_response = await state.backend.post(
+                        route=route,
+                        headers=backend_headers,
                         content=raw_body,
                     )
                     _set_span_attributes(
-                        upstream_span,
-                        {"http.status_code": upstream_response.status_code},
+                        backend_span,
+                        {"http.status_code": backend_response.status_code},
                     )
-                    _mark_error_if_needed(upstream_span, upstream_response.status_code)
+                    _mark_error_if_needed(backend_span, backend_response.status_code)
 
                 response_headers = _gateway_response_headers(
-                    upstream_response.headers,
+                    backend_response.headers,
                     request_id=request_id,
                     session_id=session_id,
                 )
-                response_text = upstream_response.text
+                response_text = backend_response.text
                 duration_sec = time.perf_counter() - started_at
-                status_code = upstream_response.status_code
+                status_code = backend_response.status_code
 
                 _set_span_attributes(
                     span,
                     {
                         "http.status_code": status_code,
-                        "llm.response.body_bytes": len(upstream_response.content),
+                        "llm.response.body_bytes": len(backend_response.content),
                         "llm.duration_sec": duration_sec,
                     },
                 )
@@ -865,7 +851,7 @@ def create_router() -> APIRouter:
                         stream=False,
                         status_code=status_code,
                         response_headers=response_headers,
-                        response_bytes=upstream_response.content,
+                        response_bytes=backend_response.content,
                         response_text=response_text,
                         duration_sec=duration_sec,
                         session_init_e2e_sec=duration_sec if session_first_request else None,
@@ -898,10 +884,10 @@ def create_router() -> APIRouter:
                 )
 
                 return Response(
-                    content=upstream_response.content,
+                    content=backend_response.content,
                     status_code=status_code,
                     headers=response_headers,
-                    media_type=upstream_response.headers.get("content-type"),
+                    media_type=backend_response.headers.get("content-type"),
                 )
 
             except asyncio.CancelledError as exc:
@@ -1019,21 +1005,21 @@ def create_router() -> APIRouter:
         session_first_request = False
         payload = parse_json_maybe(decoded_body)
 
-        upstream_headers = strip_hop_by_hop_headers(headers_in)
-        upstream_headers["x-request-id"] = request_id
-        if session_id is not None:
-            upstream_headers["x-session-id"] = session_id
-        upstream_url = f"{settings.upstream_base_url}{route}"
+        backend_headers = state.backend.forwarded_headers(
+            headers_in,
+            request_id=request_id,
+            session_id=session_id,
+        )
 
-        upstream_response = await state.http.request(
+        backend_response = await state.backend.request(
             method=method,
-            url=upstream_url,
-            headers=upstream_headers,
+            route=route,
+            headers=backend_headers,
             content=raw_body,
             params=request.query_params,
         )
         response_headers = _gateway_response_headers(
-            upstream_response.headers,
+            backend_response.headers,
             request_id=request_id,
             session_id=session_id,
         )
@@ -1063,10 +1049,10 @@ def create_router() -> APIRouter:
                 session_id=session_id,
                 session_first_request=session_first_request,
                 stream=False,
-                status_code=upstream_response.status_code,
+                status_code=backend_response.status_code,
                 response_headers=response_headers,
-                response_bytes=upstream_response.content,
-                response_text=upstream_response.text,
+                response_bytes=backend_response.content,
+                response_text=backend_response.text,
                 duration_sec=time.perf_counter() - started_at,
                 log_body_sha256=settings.log_body_sha256,
             )
@@ -1077,16 +1063,16 @@ def create_router() -> APIRouter:
             time.perf_counter() - started_at
         )
         return Response(
-            content=upstream_response.content,
-            status_code=upstream_response.status_code,
+            content=backend_response.content,
+            status_code=backend_response.status_code,
             headers=response_headers,
-            media_type=upstream_response.headers.get("content-type"),
+            media_type=backend_response.headers.get("content-type"),
         )
 
     @router.get("/")
     async def root() -> PlainTextResponse:
         """Return a tiny human-readable status page for manual checks."""
 
-        return PlainTextResponse("vLLM gateway is up")
+        return PlainTextResponse("OpenAI-compatible gateway is up")
 
     return router

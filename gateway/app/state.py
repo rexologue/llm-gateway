@@ -8,6 +8,7 @@ from typing import Any
 
 import httpx
 
+from app.backend import OpenAICompatibleBackend
 from app.event_sinks import LokiSink
 from app.http_utils import utc_now_iso
 from app.session_tracker import SessionTracker
@@ -21,6 +22,7 @@ class AppState:
 
     settings: Settings
     http: httpx.AsyncClient
+    backend: OpenAICompatibleBackend
     loki_sink: LokiSink
     session_tracker: SessionTracker
 
@@ -50,6 +52,10 @@ def create_app_state(settings: Settings) -> AppState:
         max_keepalive_connections=settings.http_max_keepalive_connections,
     )
     http_client = httpx.AsyncClient(timeout=timeout, limits=limits, follow_redirects=False)
+    backend = OpenAICompatibleBackend(
+        base_url=settings.backend_base_url,
+        http=http_client,
+    )
     loki_sink = LokiSink(
         enabled=settings.loki_enabled,
         push_url=settings.loki_push_url,
@@ -68,6 +74,7 @@ def create_app_state(settings: Settings) -> AppState:
     return AppState(
         settings=settings,
         http=http_client,
+        backend=backend,
         loki_sink=loki_sink,
         session_tracker=session_tracker,
     )

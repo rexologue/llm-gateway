@@ -1,4 +1,4 @@
-"""FastAPI application factory for the vLLM gateway."""
+"""FastAPI application factory for the OpenAI-compatible gateway."""
 
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ def create_app() -> FastAPI:
             await state.session_tracker.close()
             await state.http.aclose()
 
-    application = FastAPI(title="vLLM Gateway", lifespan=lifespan)
+    application = FastAPI(title="OpenAI Compatible Gateway", lifespan=lifespan)
     configure_tracing(application, settings)
     application.include_router(create_router())
     return application

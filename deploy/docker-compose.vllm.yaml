@@ -1,12 +1,16 @@
+name: llm-gateway-vllm
+
 services:
   llm-gateway:
     build:
-      context: ./gateway
+      context: ../gateway
 
     container_name: llm-gateway
     restart: unless-stopped
 
     depends_on:
+      vllm:
+        condition: service_healthy
       llm-gateway-loki:
         condition: service_started
       llm-gateway-valkey:
@@ -15,7 +19,7 @@ services:
     environment:
       GATEWAY_HOST: "0.0.0.0"
       GATEWAY_PORT: "8080"
-      GATEWAY_BACKEND_BASE_URL: "${GATEWAY_BACKEND_BASE_URL:-http://backend:8000}"
+      GATEWAY_BACKEND_BASE_URL: "http://vllm:8000"
       GATEWAY_ENABLE_MAX_COMPLETION_TOKENS_OVERRIDE: "true"
       GATEWAY_FORCED_MAX_COMPLETION_TOKENS: "1024"
       GATEWAY_ENV: "local"
@@ -53,6 +57,29 @@ services:
       - backend
 
 
+  vllm:
+    image: vllm/vllm-openai:v0.19.0
+    container_name: vllm
+    restart: unless-stopped
+    entrypoint: ["/bin/bash", "-lc"]
+    command: ["bash /serve_vllm.sh"]
+    runtime: nvidia
+
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/v1/models >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+    volumes:
+      - /root/.models/Qwen3.5-35B-A3B-FP8:/model:ro
+      - ./serve_vllm.sh:/serve_vllm.sh:ro
+
+    networks:
+      - backend
+
+
   llm-gateway-valkey:
     image: valkey/valkey:9.0-alpine
     container_name: llm-gateway-valkey
@@ -60,7 +87,7 @@ services:
     command: ["valkey-server", "/usr/local/etc/valkey/valkey.conf"]
 
     volumes:
-      - ./configs/valkey.conf:/usr/local/etc/valkey/valkey.conf:ro
+      - ../configs/valkey.conf:/usr/local/etc/valkey/valkey.conf:ro
       - llm-gateway-valkey-data:/data
 
     networks:
@@ -77,7 +104,7 @@ services:
       - "0.0.0.0:9092:3100"
 
     volumes:
-      - ./configs/loki-config.yaml:/etc/loki/local-config.yaml:ro
+      - ../configs/loki-config.yaml:/etc/loki/local-config.yaml:ro
       - llm-gateway-loki-data:/loki
 
     networks:
@@ -97,7 +124,7 @@ services:
       - "--storage.tsdb.path=/prometheus"
 
     volumes:
-      - ./configs/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../configs/prometheus-vllm.yml:/etc/prometheus/prometheus.yml:ro
       - llm-prometheus-data:/prometheus
 
     extra_hosts:

@@ -282,7 +282,7 @@ def build_response_event(
     )
     event: dict[str, Any] = _compact_dict(
         {
-            "bucket": "response_vllm",
+            "bucket": "response_backend",
             "route": route,
             "method": method,
             "request_id": request_id,
@@ -329,7 +329,7 @@ def build_error_event(
     error: BaseException,
     duration_sec: float,
 ) -> dict[str, Any]:
-    """Build an error event for gateway failures before a vLLM response exists."""
+    """Build an error event for gateway failures before a backend response exists."""
 
     return {
         "bucket": "gateway_error",

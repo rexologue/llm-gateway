@@ -1,4 +1,4 @@
-"""vLLM gateway application package."""
+"""OpenAI-compatible gateway application package."""
 
 from app.main import app
 

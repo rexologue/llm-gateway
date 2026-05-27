@@ -1,12 +1,16 @@
+name: llm-gateway-sglang
+
 services:
   llm-gateway:
     build:
-      context: ./gateway
+      context: ../gateway
 
     container_name: llm-gateway
     restart: unless-stopped
 
     depends_on:
+      sglang:
+        condition: service_healthy
       llm-gateway-loki:
         condition: service_started
       llm-gateway-valkey:
@@ -15,7 +19,7 @@ services:
     environment:
       GATEWAY_HOST: "0.0.0.0"
       GATEWAY_PORT: "8080"
-      GATEWAY_BACKEND_BASE_URL: "${GATEWAY_BACKEND_BASE_URL:-http://backend:8000}"
+      GATEWAY_BACKEND_BASE_URL: "http://sglang:30000"
       GATEWAY_ENABLE_MAX_COMPLETION_TOKENS_OVERRIDE: "true"
       GATEWAY_FORCED_MAX_COMPLETION_TOKENS: "1024"
       GATEWAY_ENV: "local"
@@ -53,6 +57,38 @@ services:
       - backend
 
 
+  sglang:
+    image: lmsysorg/sglang:v0.5.11
+    container_name: sglang
+    restart: unless-stopped
+    entrypoint: ["/bin/bash", "-lc"]
+    command: ["bash /serve_sglang.sh"]
+    runtime: nvidia
+    ipc: host
+    shm_size: "32gb"
+
+    environment:
+      - CUDA_VISIBLE_DEVICES=1
+
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:30000/v1/models >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+      start_period: 60s
+
+    ports:
+      - "0.0.0.0:9900:30000"
+
+    volumes:
+      - /root/.models/GigaChat3.1-10B-A1.8B:/model:ro
+      - ./serve_sglang.sh:/serve_sglang.sh:ro
+      - sglang-crash-dumps:/tmp/sglang_crash_dump
+
+    networks:
+      - backend
+
+
   llm-gateway-valkey:
     image: valkey/valkey:9.0-alpine
     container_name: llm-gateway-valkey
@@ -60,7 +96,7 @@ services:
     command: ["valkey-server", "/usr/local/etc/valkey/valkey.conf"]
 
     volumes:
-      - ./configs/valkey.conf:/usr/local/etc/valkey/valkey.conf:ro
+      - ../configs/valkey.conf:/usr/local/etc/valkey/valkey.conf:ro
       - llm-gateway-valkey-data:/data
 
     networks:
@@ -77,7 +113,7 @@ services:
       - "0.0.0.0:9092:3100"
 
     volumes:
-      - ./configs/loki-config.yaml:/etc/loki/local-config.yaml:ro
+      - ../configs/loki-config.yaml:/etc/loki/local-config.yaml:ro
       - llm-gateway-loki-data:/loki
 
     networks:
@@ -97,7 +133,7 @@ services:
       - "--storage.tsdb.path=/prometheus"
 
     volumes:
-      - ./configs/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../configs/prometheus-sglang.yml:/etc/prometheus/prometheus.yml:ro
       - llm-prometheus-data:/prometheus
 
     extra_hosts:
@@ -137,6 +173,7 @@ volumes:
   llm-gateway-loki-data:
   llm-prometheus-data:
   llm-gateway-valkey-data:
+  sglang-crash-dumps:
 
 
 networks:
