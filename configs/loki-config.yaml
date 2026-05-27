@@ -1,108 +1,108 @@
-# Отключаем multi-tenant режим.
-# Для одного сервера и одного логического "клиента" это самый простой вариант:
-# Loki не будет требовать tenant ID в запросах.
+# Disable multi-tenant mode.
+# This is the simplest mode for one server and one logical client: Loki will
+# not require a tenant ID on incoming requests.
 auth_enabled: false
 
 server:
-  # HTTP-порт Loki API.
-  # Сюда будут ходить Grafana, Alloy/Promtail и любые клиенты Loki API.
+  # HTTP port for the Loki API.
+  # Grafana and any direct Loki API clients use this endpoint.
   http_listen_port: 3100
 
-  # Уровень логов самого Loki.
-  # info — нормальный рабочий режим без лишнего шума.
+  # Loki's own log level.
+  # info is a practical default without excessive noise.
   log_level: info
 
 common:
-  # Общий корневой путь для служебных файлов Loki.
-  # Удобно монтировать один persistent volume целиком в /loki.
+  # Shared root path for Loki runtime files.
+  # Mounting one persistent volume at /loki keeps the local stack simple.
   path_prefix: /loki
 
-  # Для одного инстанса Loki репликация должна быть 1.
+  # A single Loki instance must use replication factor 1.
   replication_factor: 1
 
   ring:
-    # Для single-node полезно явно указать loopback-адрес инстанса.
-    # Это типичный паттерн для локального/монолитного Loki.
+    # A single-node setup can explicitly use the loopback address.
+    # This is a common local/monolithic Loki pattern.
     instance_addr: 127.0.0.1
 
     kvstore:
-      # Ring хранится в памяти процесса.
-      # Для одного сервиса/одного сервера этого достаточно.
+      # Store the ring in process memory.
+      # This is sufficient for one service on one server.
       store: inmemory
 
 schema_config:
   configs:
     - from: 2024-01-01
-      # TSDB — рекомендуемый storage/index режим для современных версий Loki.
+      # TSDB is the recommended storage/index mode for current Loki versions.
       store: tsdb
 
-      # Храним объекты локально на файловой системе сервера.
-      # Для single-node это самый простой вариант.
+      # Store objects locally on the server filesystem.
+      # This is the simplest option for a single-node stack.
       object_store: filesystem
 
-      # Актуальная схема хранения для TSDB.
+      # Current storage schema for TSDB.
       schema: v13
 
       index:
-        # Префикс файлов индекса.
+        # Prefix for index files.
         prefix: index_
 
-        # Период индекса — сутки.
-        # Для retention через compactor это корректный и стандартный вариант.
+        # Daily index period.
+        # This is the standard layout for compactor-based retention.
         period: 24h
 
 storage_config:
   filesystem:
-    # Каталог, где Loki будет хранить chunks с логами.
-    # Этот путь должен жить на persistent storage.
+    # Directory where Loki stores log chunks.
+    # This path should live on persistent storage.
     directory: /loki/chunks
 
 ingester:
   wal:
-    # WAL помогает переживать рестарты/сбои с меньшим риском потери свежих логов.
+    # WAL reduces the risk of losing recent logs across restarts or crashes.
     enabled: true
 
-    # Каталог WAL.
-    # Тоже должен быть на persistent storage.
+    # WAL directory.
+    # This should also live on persistent storage.
     dir: /loki/wal
 
 limits_config:
-  # Разрешаем structured metadata.
-  # Это полезно для современных сценариев анализа логов в Grafana/Loki.
+  # Allow structured metadata.
+  # This is useful for modern Grafana/Loki analysis workflows.
   allow_structured_metadata: true
 
-  # Не отбрасывать "старые" записи по timestamp.
-  # Удобно, если логи могут доезжать с задержкой.
+  # Do not reject entries with older timestamps.
+  # This is useful when logs can arrive with some delay.
   reject_old_samples: false
 
-  # Включает volume-related возможности для Grafana/Loki UI.
+  # Enable volume-related features in the Grafana/Loki UI.
   volume_enabled: true
 
-  # Хранить логи 30 дней.
-  # Важно: retention реально заработает только если ниже включён compactor.retention_enabled.
+  # Keep logs for 30 days.
+  # Retention is enforced only when compactor.retention_enabled is true.
   retention_period: 30d
 
 compactor:
-  # Рабочая директория compactor.
-  # Здесь Loki будет хранить служебные файлы compaction/retention.
+  # Compactor working directory.
+  # Loki stores compaction and retention runtime files here.
   working_directory: /loki/compactor
 
-  # Как часто запускать compaction.
-  # 10m — дефолтное и нормальное значение.
+  # How often compaction runs.
+  # 10m is the normal default.
   compaction_interval: 10m
 
-  # ВКЛЮЧАЕМ retention.
-  # Без этого retention_period не будет применяться.
+  # Enable retention enforcement.
+  # retention_period is ignored without this flag.
   retention_enabled: true
 
-  # Задержка перед физическим удалением чанков после пометки на удаление.
-  # 2h — стандартное дефолтное значение.
+  # Delay before physically deleting chunks after they are marked for deletion.
+  # 2h is the standard default.
   retention_delete_delay: 2h
 
-  # Хранилище для delete requests.
-  # Для filesystem/single-node логично тоже использовать filesystem.
+  # Storage backend for delete requests.
+  # filesystem is the natural choice for this single-node filesystem setup.
   delete_request_store: filesystem
 
 analytics:
-  # Отключаем отправку usage/reporting telemetry.
+  # Disable Loki usage/reporting telemetry.
   reporting_enabled: false

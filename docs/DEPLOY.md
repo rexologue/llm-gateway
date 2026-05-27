@@ -1,5 +1,9 @@
 # Deployment Notes
 
+This document describes how to start the backend-specific gateway stacks and
+the separate observability stack. Metrics are documented in
+[METRICS.md](METRICS.md), and tracing is documented in [TRACES.md](TRACES.md).
+
 The project has two backend deployment entry points:
 
 - `deploy/docker-compose.vllm.yaml` - gateway plus a vLLM backend.
@@ -8,6 +12,9 @@ The project has two backend deployment entry points:
 The trace/Grafana stack is separate:
 
 - `observability/docker-compose.yaml` - Tempo, OpenTelemetry Collector, Grafana.
+
+All paths in this document are relative to the repository root unless a command
+changes directory explicitly.
 
 Before starting a backend stack, create a local deployment env file:
 
@@ -79,7 +86,10 @@ docker compose -f docker-compose.yaml up -d
 ```
 
 The gateway variants send OTLP traces to `host.docker.internal:4317`, so this
-stack can run independently from the backend-specific compose file.
+stack can run independently from the backend-specific compose file. Keep
+`GATEWAY_OTEL_ENABLED=true` and
+`GATEWAY_OTEL_EXPORTER_OTLP_ENDPOINT=http://host.docker.internal:4317` in
+`deploy/.env` when you want traces to appear in Tempo.
 
 Useful URLs:
 
@@ -89,6 +99,11 @@ Useful URLs:
 - Loki: `http://127.0.0.1:9092`
 - Grafana: `http://127.0.0.1:3000`
 - Tempo: `http://127.0.0.1:3200`
+
+Grafana provisions the `Gateway Overview` dashboard at startup from
+`observability/configs/grafana/provisioning/dashboards/json/gateway-overview.json`.
+The dashboard uses only the Prometheus datasource and only metrics exported by
+the gateway itself.
 
 ## Validation
 

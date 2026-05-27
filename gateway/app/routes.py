@@ -4,272 +4,49 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import Mapping
-from typing import Any, AsyncIterator, cast
+from typing import AsyncIterator, cast
 
-import orjson
 from fastapi import APIRouter, FastAPI, Request, Response
-from redis.exceptions import RedisError
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from opentelemetry import trace
-from opentelemetry.trace import Span, Status, StatusCode
+from opentelemetry.trace import Status, StatusCode
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+from redis.exceptions import RedisError
 
+from app.gateway_errors import log_gateway_error
+from app.gateway_responses import gateway_response_headers
 from app.http_utils import (
     parse_json_maybe,
     request_id_from_headers,
     session_id_from_headers,
-    strip_hop_by_hop_headers,
 )
-from app.log_payloads import build_error_event, build_request_event, build_response_event
+from app.llm_payloads import model_label
+from app.log_payloads import build_request_event, build_response_event
 from app.observability import (
+    ACTIVE_SESSION_GAUGE,
     REQUEST_COUNTER,
     REQUEST_LATENCY,
-    SESSION_INIT_E2E_LATENCY,
     SESSION_INIT_TTFT,
-    SESSION_REQUEST_COUNTER,
     uptime_seconds,
 )
+from app.proxy_metrics import record_proxy_response
+from app.request_shaping import apply_chat_payload_overrides, apply_generic_payload_overrides
+from app.session_metrics import (
+    bool_label,
+    observe_session_e2e,
+    record_session_request,
+    session_metric_labels,
+)
+from app.span_utils import mark_error_if_needed, request_span_attributes, set_span_attributes
 from app.state import AppState
 
 tracer = trace.get_tracer("llm-gateway")
-MAX_MODEL_LABEL_LENGTH = 128
 
 
 def _get_state(app: FastAPI) -> AppState:
     """Return the initialized gateway state from the FastAPI application."""
 
     return cast(AppState, app.state.gateway_state)
-
-
-def encode_payload(payload: dict[str, Any]) -> tuple[bytes, str]:
-    raw_body = orjson.dumps(payload)
-    decoded_body = raw_body.decode("utf-8")
-    return raw_body, decoded_body
-
-
-def apply_chat_payload_overrides(
-    payload: dict[str, Any],
-    *,
-    forced_max_completion_tokens: int | None,
-    forced_thinking_disabled: bool,
-) -> tuple[dict[str, Any], bytes, str]:
-    patched = dict(payload)
-
-    if forced_max_completion_tokens is not None:
-        patched["max_completion_tokens"] = forced_max_completion_tokens
-        patched.pop("max_tokens", None)
-
-    if forced_thinking_disabled:
-        patched["enable_thinking"] = False
-
-    raw_body, decoded_body = encode_payload(patched)
-    return patched, raw_body, decoded_body
-
-
-def apply_generic_payload_overrides(
-    payload: dict[str, Any],
-    *,
-    forced_thinking_disabled: bool,
-) -> tuple[dict[str, Any], bytes, str]:
-    patched = dict(payload)
-
-    if forced_thinking_disabled:
-        patched["enable_thinking"] = False
-
-    raw_body, decoded_body = encode_payload(patched)
-    return patched, raw_body, decoded_body
-
-
-def status_family(status_code: int | None) -> str:
-    if status_code is None:
-        return "unknown"
-    return f"{status_code // 100}xx"
-
-
-def result_from_status(status_code: int | None, cancelled: bool) -> str:
-    if cancelled:
-        return "cancelled"
-    if status_code is None or status_code >= 400:
-        return "error"
-    return "success"
-
-
-def _bool_label(value: bool) -> str:
-    return str(value).lower()
-
-
-def _model_label(payload: Mapping[str, Any] | None) -> str:
-    model = payload.get("model") if payload is not None else None
-    if not isinstance(model, str):
-        return "unknown"
-
-    model = model.strip()
-    if not model or len(model) > MAX_MODEL_LABEL_LENGTH:
-        return "unknown"
-
-    return model
-
-
-def _message_count(payload: Mapping[str, Any] | None) -> int | None:
-    messages = payload.get("messages") if payload is not None else None
-    return len(messages) if isinstance(messages, list) else None
-
-
-def _max_completion_tokens(payload: Mapping[str, Any] | None) -> int | None:
-    if payload is None:
-        return None
-
-    value = payload.get("max_completion_tokens", payload.get("max_tokens"))
-    if isinstance(value, int):
-        return value
-    return None
-
-
-def _set_span_attributes(span: Span, attributes: Mapping[str, Any]) -> None:
-    for key, value in attributes.items():
-        if value is not None:
-            span.set_attribute(key, value)
-
-
-def _mark_error_if_needed(span: Span, status_code: int | None, cancelled: bool = False) -> None:
-    if cancelled or status_code is None or status_code >= 400:
-        span.set_status(Status(StatusCode.ERROR))
-
-
-def _request_span_attributes(
-    *,
-    request_id: str,
-    session_id: str | None,
-    session_first_request: bool,
-    route: str,
-    method: str,
-    stream: bool,
-    payload: Mapping[str, Any] | None,
-    raw_body: bytes,
-) -> dict[str, Any]:
-    attributes: dict[str, Any] = {
-        "request.id": request_id,
-        "session.present": session_id is not None,
-        "session.first_request": session_first_request,
-        "http.route": route,
-        "http.method": method,
-        "llm.model": _model_label(payload),
-        "llm.stream": stream,
-        "llm.message_count": _message_count(payload),
-        "llm.max_completion_tokens": _max_completion_tokens(payload),
-        "llm.request.body_bytes": len(raw_body),
-    }
-
-    if session_id is not None:
-        attributes["session.id"] = session_id
-
-    return attributes
-
-
-def _gateway_response_headers(
-    headers: Mapping[str, str],
-    *,
-    request_id: str,
-    session_id: str | None,
-) -> dict[str, str]:
-    response_headers = strip_hop_by_hop_headers(headers)
-    response_headers["x-request-id"] = request_id
-    if session_id is not None:
-        response_headers["x-session-id"] = session_id
-    return response_headers
-
-
-def _session_metric_labels(
-    *,
-    route: str,
-    method: str,
-    stream: bool,
-    model: str,
-    status_code: int | None,
-    cancelled: bool,
-) -> dict[str, str]:
-    return {
-        "route": route,
-        "method": method,
-        "stream": _bool_label(stream),
-        "model": model,
-        "status_family": status_family(status_code),
-        "result": result_from_status(status_code, cancelled),
-    }
-
-
-def _record_session_counters(
-    *,
-    route: str,
-    method: str,
-    stream: bool,
-    session_id: str | None,
-    session_first_request: bool,
-) -> None:
-    SESSION_REQUEST_COUNTER.labels(
-        route=route,
-        method=method,
-        stream=_bool_label(stream),
-        session_present=_bool_label(session_id is not None),
-        session_first_request=_bool_label(session_first_request),
-    ).inc()
-
-
-def _observe_session_e2e(
-    *,
-    session_first_request: bool,
-    route: str,
-    method: str,
-    stream: bool,
-    model: str,
-    status_code: int | None,
-    cancelled: bool,
-    duration_sec: float,
-) -> None:
-    if not session_first_request:
-        return
-
-    SESSION_INIT_E2E_LATENCY.labels(
-        **_session_metric_labels(
-            route=route,
-            method=method,
-            stream=stream,
-            model=model,
-            status_code=status_code,
-            cancelled=cancelled,
-        )
-    ).observe(duration_sec)
-
-
-async def _log_gateway_error(
-    *,
-    state: AppState,
-    route: str,
-    method: str,
-    request_id: str,
-    session_id: str | None,
-    session_first_request: bool,
-    stream: bool,
-    error: BaseException,
-    duration_sec: float,
-) -> None:
-    event = build_error_event(
-        route=route,
-        method=method,
-        request_id=request_id,
-        session_id=session_id,
-        session_first_request=session_first_request,
-        stream=stream,
-        error=error,
-        duration_sec=duration_sec,
-    )
-    if session_first_request:
-        event["session_init_e2e_sec"] = round(duration_sec, 6)
-
-    await state.log_event(
-        **event
-    )
 
 
 def create_router() -> APIRouter:
@@ -284,8 +61,13 @@ def create_router() -> APIRouter:
         return JSONResponse({"ok": True, "uptime_sec": round(uptime_seconds(), 3)})
 
     @router.get("/gateway/metrics")
-    async def gateway_metrics() -> Response:
+    async def gateway_metrics(request: Request) -> Response:
         """Expose Prometheus metrics collected by the gateway process."""
+
+        state = _get_state(request.app)
+        active_session_count = await state.session_tracker.active_session_count()
+        if active_session_count is not None:
+            ACTIVE_SESSION_GAUGE.set(active_session_count)
 
         return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
@@ -324,6 +106,8 @@ def create_router() -> APIRouter:
 
     @router.api_route("/v1/chat/completions", methods=["POST"])
     async def chat_completions(request: Request) -> Response:
+        """Proxy chat completions with session tracking, metrics, logs, and tracing."""
+
         state = _get_state(request.app)
         settings = state.settings
         route = "/v1/chat/completions"
@@ -344,12 +128,12 @@ def create_router() -> APIRouter:
             status_code = 400
             response_body = b'{"error":"request body must be a JSON object"}'
             response_text = response_body.decode("utf-8")
-            response_headers = _gateway_response_headers(
+            response_headers = gateway_response_headers(
                 {},
                 request_id=request_id,
                 session_id=session_id,
             )
-            _record_session_counters(
+            record_session_request(
                 route=route,
                 method=method,
                 stream=stream,
@@ -360,7 +144,7 @@ def create_router() -> APIRouter:
 
             with tracer.start_as_current_span(
                 "llm.gateway.request",
-                attributes=_request_span_attributes(
+                attributes=request_span_attributes(
                     request_id=request_id,
                     session_id=session_id,
                     session_first_request=session_first_request,
@@ -372,7 +156,7 @@ def create_router() -> APIRouter:
                 ),
             ) as span:
                 duration_sec = time.perf_counter() - started_at
-                _set_span_attributes(
+                set_span_attributes(
                     span,
                     {
                         "http.status_code": status_code,
@@ -413,7 +197,7 @@ def create_router() -> APIRouter:
                 REQUEST_LATENCY.labels(route=route, method=method, stream="false").observe(
                     duration_sec
                 )
-                _observe_session_e2e(
+                observe_session_e2e(
                     session_first_request=session_first_request,
                     route=route,
                     method=method,
@@ -422,6 +206,13 @@ def create_router() -> APIRouter:
                     status_code=status_code,
                     cancelled=False,
                     duration_sec=duration_sec,
+                )
+                record_proxy_response(
+                    route=route,
+                    method=method,
+                    stream=stream,
+                    status_code=status_code,
+                    cancelled=False,
                 )
 
             return Response(
@@ -444,15 +235,15 @@ def create_router() -> APIRouter:
         await state.session_store.save_messages(session_id, payload.get("messages"))
 
         stream = bool(payload.get("stream"))
-        model = _model_label(payload)
-        _record_session_counters(
+        model = model_label(payload)
+        record_session_request(
             route=route,
             method=method,
             stream=stream,
             session_id=session_id,
             session_first_request=session_first_request,
         )
-        REQUEST_COUNTER.labels(route=route, method=method, stream=_bool_label(stream)).inc()
+        REQUEST_COUNTER.labels(route=route, method=method, stream=bool_label(stream)).inc()
 
         backend_headers = state.backend.forwarded_headers(
             headers_in,
@@ -464,7 +255,7 @@ def create_router() -> APIRouter:
         if stream:
             request_span = tracer.start_span(
                 "llm.gateway.request",
-                attributes=_request_span_attributes(
+                attributes=request_span_attributes(
                     request_id=request_id,
                     session_id=session_id,
                     session_first_request=session_first_request,
@@ -485,7 +276,7 @@ def create_router() -> APIRouter:
                         content=raw_body,
                     )
                     with tracer.start_as_current_span("llm.backend.request") as backend_span:
-                        _set_span_attributes(
+                        set_span_attributes(
                             backend_span,
                             {
                                 "http.method": method,
@@ -496,17 +287,17 @@ def create_router() -> APIRouter:
                             },
                         )
                         backend_response = await state.backend.send(backend_request, stream=True)
-                        _set_span_attributes(
+                        set_span_attributes(
                             backend_span,
                             {"http.status_code": backend_response.status_code},
                         )
-                        _mark_error_if_needed(backend_span, backend_response.status_code)
+                        mark_error_if_needed(backend_span, backend_response.status_code)
 
             except asyncio.CancelledError as exc:
                 duration_sec = time.perf_counter() - started_at
                 request_span.record_exception(exc)
                 request_span.set_status(Status(StatusCode.ERROR))
-                _set_span_attributes(
+                set_span_attributes(
                     request_span,
                     {
                         "llm.duration_sec": duration_sec,
@@ -517,7 +308,7 @@ def create_router() -> APIRouter:
                 REQUEST_LATENCY.labels(route=route, method=method, stream="true").observe(
                     duration_sec
                 )
-                await _log_gateway_error(
+                await log_gateway_error(
                     state=state,
                     route=route,
                     method=method,
@@ -528,7 +319,7 @@ def create_router() -> APIRouter:
                     error=exc,
                     duration_sec=duration_sec,
                 )
-                _observe_session_e2e(
+                observe_session_e2e(
                     session_first_request=session_first_request,
                     route=route,
                     method=method,
@@ -538,6 +329,13 @@ def create_router() -> APIRouter:
                     cancelled=True,
                     duration_sec=duration_sec,
                 )
+                record_proxy_response(
+                    route=route,
+                    method=method,
+                    stream=True,
+                    status_code=None,
+                    cancelled=True,
+                )
                 request_span.end()
                 raise
 
@@ -545,7 +343,7 @@ def create_router() -> APIRouter:
                 duration_sec = time.perf_counter() - started_at
                 request_span.record_exception(exc)
                 request_span.set_status(Status(StatusCode.ERROR))
-                _set_span_attributes(
+                set_span_attributes(
                     request_span,
                     {
                         "llm.duration_sec": duration_sec,
@@ -555,7 +353,7 @@ def create_router() -> APIRouter:
                 REQUEST_LATENCY.labels(route=route, method=method, stream="true").observe(
                     duration_sec
                 )
-                await _log_gateway_error(
+                await log_gateway_error(
                     state=state,
                     route=route,
                     method=method,
@@ -566,7 +364,7 @@ def create_router() -> APIRouter:
                     error=exc,
                     duration_sec=duration_sec,
                 )
-                _observe_session_e2e(
+                observe_session_e2e(
                     session_first_request=session_first_request,
                     route=route,
                     method=method,
@@ -576,21 +374,30 @@ def create_router() -> APIRouter:
                     cancelled=False,
                     duration_sec=duration_sec,
                 )
+                record_proxy_response(
+                    route=route,
+                    method=method,
+                    stream=True,
+                    status_code=None,
+                    cancelled=False,
+                )
                 request_span.end()
                 raise
 
             status_code = backend_response.status_code
-            response_headers = _gateway_response_headers(
+            response_headers = gateway_response_headers(
                 backend_response.headers,
                 request_id=request_id,
                 session_id=session_id,
             )
             raw_chunks: list[bytes] = []
 
-            _set_span_attributes(request_span, {"http.status_code": status_code})
-            _mark_error_if_needed(request_span, status_code)
+            set_span_attributes(request_span, {"http.status_code": status_code})
+            mark_error_if_needed(request_span, status_code)
 
             async def iterator() -> AsyncIterator[bytes]:
+                """Yield backend stream chunks while recording final stream telemetry."""
+
                 chunk_count = 0
                 response_bytes_count = 0
                 ttft_sec: float | None = None
@@ -607,13 +414,13 @@ def create_router() -> APIRouter:
                                     response_bytes_count += len(chunk)
                                     if ttft_sec is None:
                                         ttft_sec = time.perf_counter() - started_at
-                                        _set_span_attributes(
+                                        set_span_attributes(
                                             stream_span,
                                             {"llm.ttft_sec": ttft_sec},
                                         )
                                         if session_first_request:
                                             SESSION_INIT_TTFT.labels(
-                                                **_session_metric_labels(
+                                                **session_metric_labels(
                                                     route=route,
                                                     method=method,
                                                     stream=True,
@@ -647,7 +454,7 @@ def create_router() -> APIRouter:
                             duration_sec = time.perf_counter() - started_at
                             response_bytes = b"".join(raw_chunks)
                             body_text = response_bytes.decode("utf-8", errors="replace")
-                            _set_span_attributes(
+                            set_span_attributes(
                                 stream_span,
                                 {
                                     "llm.chunk_count": chunk_count,
@@ -656,7 +463,7 @@ def create_router() -> APIRouter:
                                     "llm.cancelled": cancelled,
                                 },
                             )
-                            _set_span_attributes(
+                            set_span_attributes(
                                 request_span,
                                 {
                                     "llm.response.body_bytes": response_bytes_count,
@@ -664,8 +471,8 @@ def create_router() -> APIRouter:
                                     "llm.cancelled": cancelled,
                                 },
                             )
-                            _mark_error_if_needed(stream_span, status_code, cancelled=cancelled)
-                            _mark_error_if_needed(request_span, status_code, cancelled=cancelled)
+                            mark_error_if_needed(stream_span, status_code, cancelled=cancelled)
+                            mark_error_if_needed(request_span, status_code, cancelled=cancelled)
                             metric_status_code = (
                                 None if stream_error is not None and not cancelled else status_code
                             )
@@ -709,7 +516,7 @@ def create_router() -> APIRouter:
                                     )
                                 )
                                 if stream_error is not None:
-                                    await _log_gateway_error(
+                                    await log_gateway_error(
                                         state=state,
                                         route=route,
                                         method=method,
@@ -725,7 +532,7 @@ def create_router() -> APIRouter:
                                     method=method,
                                     stream="true",
                                 ).observe(duration_sec)
-                                _observe_session_e2e(
+                                observe_session_e2e(
                                     session_first_request=session_first_request,
                                     route=route,
                                     method=method,
@@ -734,6 +541,13 @@ def create_router() -> APIRouter:
                                     status_code=metric_status_code,
                                     cancelled=cancelled,
                                     duration_sec=duration_sec,
+                                )
+                                record_proxy_response(
+                                    route=route,
+                                    method=method,
+                                    stream=True,
+                                    status_code=metric_status_code,
+                                    cancelled=cancelled,
                                 )
 
                             finally:
@@ -752,7 +566,7 @@ def create_router() -> APIRouter:
 
         with tracer.start_as_current_span(
             "llm.gateway.request",
-            attributes=_request_span_attributes(
+            attributes=request_span_attributes(
                 request_id=request_id,
                 session_id=session_id,
                 session_first_request=session_first_request,
@@ -765,7 +579,7 @@ def create_router() -> APIRouter:
         ) as span:
             try:
                 with tracer.start_as_current_span("llm.backend.request") as backend_span:
-                    _set_span_attributes(
+                    set_span_attributes(
                         backend_span,
                         {
                             "http.method": method,
@@ -780,13 +594,13 @@ def create_router() -> APIRouter:
                         headers=backend_headers,
                         content=raw_body,
                     )
-                    _set_span_attributes(
+                    set_span_attributes(
                         backend_span,
                         {"http.status_code": backend_response.status_code},
                     )
-                    _mark_error_if_needed(backend_span, backend_response.status_code)
+                    mark_error_if_needed(backend_span, backend_response.status_code)
 
-                response_headers = _gateway_response_headers(
+                response_headers = gateway_response_headers(
                     backend_response.headers,
                     request_id=request_id,
                     session_id=session_id,
@@ -795,7 +609,7 @@ def create_router() -> APIRouter:
                 duration_sec = time.perf_counter() - started_at
                 status_code = backend_response.status_code
 
-                _set_span_attributes(
+                set_span_attributes(
                     span,
                     {
                         "http.status_code": status_code,
@@ -803,7 +617,7 @@ def create_router() -> APIRouter:
                         "llm.duration_sec": duration_sec,
                     },
                 )
-                _mark_error_if_needed(span, status_code)
+                mark_error_if_needed(span, status_code)
 
                 await state.log_event(
                     **build_request_event(
@@ -838,7 +652,7 @@ def create_router() -> APIRouter:
                 REQUEST_LATENCY.labels(route=route, method=method, stream="false").observe(
                     duration_sec
                 )
-                _observe_session_e2e(
+                observe_session_e2e(
                     session_first_request=session_first_request,
                     route=route,
                     method=method,
@@ -847,6 +661,13 @@ def create_router() -> APIRouter:
                     status_code=status_code,
                     cancelled=False,
                     duration_sec=duration_sec,
+                )
+                record_proxy_response(
+                    route=route,
+                    method=method,
+                    stream=False,
+                    status_code=status_code,
+                    cancelled=False,
                 )
 
                 return Response(
@@ -860,7 +681,7 @@ def create_router() -> APIRouter:
                 duration_sec = time.perf_counter() - started_at
                 span.record_exception(exc)
                 span.set_status(Status(StatusCode.ERROR))
-                _set_span_attributes(
+                set_span_attributes(
                     span,
                     {
                         "llm.response.body_bytes": 0,
@@ -871,7 +692,7 @@ def create_router() -> APIRouter:
                 REQUEST_LATENCY.labels(route=route, method=method, stream="false").observe(
                     duration_sec
                 )
-                await _log_gateway_error(
+                await log_gateway_error(
                     state=state,
                     route=route,
                     method=method,
@@ -882,7 +703,7 @@ def create_router() -> APIRouter:
                     error=exc,
                     duration_sec=duration_sec,
                 )
-                _observe_session_e2e(
+                observe_session_e2e(
                     session_first_request=session_first_request,
                     route=route,
                     method=method,
@@ -892,13 +713,20 @@ def create_router() -> APIRouter:
                     cancelled=True,
                     duration_sec=duration_sec,
                 )
+                record_proxy_response(
+                    route=route,
+                    method=method,
+                    stream=False,
+                    status_code=None,
+                    cancelled=True,
+                )
                 raise
 
             except Exception as exc:
                 duration_sec = time.perf_counter() - started_at
                 span.record_exception(exc)
                 span.set_status(Status(StatusCode.ERROR))
-                _set_span_attributes(
+                set_span_attributes(
                     span,
                     {
                         "llm.response.body_bytes": 0,
@@ -908,7 +736,7 @@ def create_router() -> APIRouter:
                 REQUEST_LATENCY.labels(route=route, method=method, stream="false").observe(
                     duration_sec
                 )
-                await _log_gateway_error(
+                await log_gateway_error(
                     state=state,
                     route=route,
                     method=method,
@@ -919,7 +747,7 @@ def create_router() -> APIRouter:
                     error=exc,
                     duration_sec=duration_sec,
                 )
-                _observe_session_e2e(
+                observe_session_e2e(
                     session_first_request=session_first_request,
                     route=route,
                     method=method,
@@ -928,6 +756,13 @@ def create_router() -> APIRouter:
                     status_code=None,
                     cancelled=False,
                     duration_sec=duration_sec,
+                )
+                record_proxy_response(
+                    route=route,
+                    method=method,
+                    stream=False,
+                    status_code=None,
+                    cancelled=False,
                 )
                 raise
 
@@ -969,7 +804,7 @@ def create_router() -> APIRouter:
             content=raw_body,
             params=request.query_params,
         )
-        response_headers = _gateway_response_headers(
+        response_headers = gateway_response_headers(
             backend_response.headers,
             request_id=request_id,
             session_id=session_id,
@@ -1009,6 +844,13 @@ def create_router() -> APIRouter:
         REQUEST_COUNTER.labels(route=route, method=method, stream="false").inc()
         REQUEST_LATENCY.labels(route=route, method=method, stream="false").observe(
             time.perf_counter() - started_at
+        )
+        record_proxy_response(
+            route=route,
+            method=method,
+            stream=False,
+            status_code=backend_response.status_code,
+            cancelled=False,
         )
         return Response(
             content=backend_response.content,

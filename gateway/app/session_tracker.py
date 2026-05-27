@@ -24,6 +24,8 @@ class SessionTracker:
         ttl_sec: int,
         max_connections: int,
     ) -> None:
+        """Initialize the Valkey connection pool for runtime session state."""
+
         self.prefix = prefix
         self.ttl_sec = max(1, int(ttl_sec))
         self.pool = redis.ConnectionPool.from_url(
@@ -36,6 +38,8 @@ class SessionTracker:
         self.redis = redis.Redis(connection_pool=self.pool)
 
     def _key(self, session_id: str) -> str:
+        """Return the Valkey key for a session id."""
+
         return f"{self.prefix}{session_id}"
 
     async def close(self) -> None:
@@ -84,3 +88,35 @@ class SessionTracker:
                 )
 
             return False
+
+    async def active_session_count(self) -> int | None:
+        """Return the current number of runtime session keys, if Valkey is available."""
+
+        pattern = f"{self.prefix}*"
+        count = 0
+
+        try:
+            async for _key in self.redis.scan_iter(match=pattern, count=1000):
+                count += 1
+            return count
+
+        except RedisError as exc:
+            error_type = type(exc).__name__
+            SESSION_TRACKER_ERRORS_COUNTER.labels(
+                operation="active_session_count",
+                error_type=error_type,
+            ).inc()
+            logger.warning("Session tracker active_session_count failed: %s", exc)
+
+            span = trace.get_current_span()
+            if span.get_span_context().is_valid:
+                span.record_exception(exc)
+                span.add_event(
+                    "session_tracker.error",
+                    {
+                        "operation": "active_session_count",
+                        "error.type": error_type,
+                    },
+                )
+
+            return None

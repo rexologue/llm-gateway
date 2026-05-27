@@ -23,8 +23,15 @@ metrics directly from the backend service, for example `vllm:8000/metrics` or
 gateway/          FastAPI gateway code
 configs/          Loki, Valkey, and Prometheus scrape configs
 deploy/           backend-specific compose files and launch scripts
+docs/             deployment, metrics, and tracing reference
 observability/    Tempo, OpenTelemetry Collector, and Grafana stack
 ```
+
+Detailed references:
+
+- [Deployment](docs/DEPLOY.md)
+- [Metrics](docs/METRICS.md)
+- [Traces](docs/TRACES.md)
 
 ## Running
 
@@ -57,6 +64,8 @@ Observability stack:
 cd observability
 docker compose -f docker-compose.yaml up -d
 ```
+
+Grafana loads the `Gateway Overview` dashboard from provisioning on startup.
 
 Default ports:
 
@@ -130,10 +139,12 @@ Sensitive headers such as `Authorization`, cookies, and API keys are redacted.
 
 ## Traces
 
-When `GATEWAY_OTEL_ENABLED=true`, the gateway emits:
+When `GATEWAY_OTEL_ENABLED=true`, FastAPI instrumentation emits HTTP spans for
+non-excluded routes. The chat completion path also emits custom domain spans:
 
-- `llm.gateway.request` for the full gateway request;
+- `llm.gateway.request` for the full chat completion gateway request;
 - `llm.backend.request` for the backend call;
 - `llm.stream_response` for streaming response iteration.
 
-The observability stack in `observability/` provides Tempo and Grafana.
+The observability stack in `observability/` provides Tempo and Grafana. See
+[Traces](docs/TRACES.md) for span attributes, error semantics, and lookup tips.

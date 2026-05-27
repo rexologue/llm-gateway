@@ -44,6 +44,8 @@ def _response_bucket(route: str) -> str:
 
 
 def _is_sensitive_payload_key(key: str) -> bool:
+    """Return whether a payload field name likely contains a secret."""
+
     lowered = key.lower()
     return (
         lowered in SENSITIVE_PAYLOAD_KEYS
@@ -94,6 +96,8 @@ def _stream_response_json(response_text: str) -> dict[str, Any]:
     done = False
 
     def flush_event() -> None:
+        """Flush the currently buffered SSE event into the event list."""
+
         nonlocal done, event_name
         if not data_lines:
             event_name = None
@@ -276,6 +280,8 @@ def _stream_assistant_text(response_text: str) -> str | None:
     data_lines: list[str] = []
 
     def flush_event() -> None:
+        """Flush the currently buffered SSE event into text fragments."""
+
         if not data_lines:
             return
 

@@ -25,6 +25,8 @@ class SessionStore:
         ttl_sec: int,
         max_connections: int,
     ) -> None:
+        """Initialize the Valkey connection pool for persisted sessions."""
+
         self.prefix = prefix
         self.ttl_sec = max(1, int(ttl_sec))
         self.pool = redis.ConnectionPool.from_url(
@@ -37,9 +39,13 @@ class SessionStore:
         self.redis = redis.Redis(connection_pool=self.pool)
 
     def _key(self, session_id: str) -> str:
+        """Return the Valkey key for a session id."""
+
         return f"{self.prefix}{session_id}"
 
     def _session_id_from_key(self, key: bytes | str) -> str:
+        """Return the external session id encoded in a Valkey key."""
+
         key_text = key.decode("utf-8") if isinstance(key, bytes) else key
         return key_text.removeprefix(self.prefix)
 

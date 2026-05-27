@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 
-from prometheus_client import Counter, Histogram
+from prometheus_client import Counter, Gauge, Histogram
 
 APP_START_TS = time.time()
 
@@ -19,6 +19,12 @@ REQUEST_LATENCY = Histogram(
     "End-to-end request latency through the gateway",
     ["route", "method", "stream"],
     buckets=(0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30, 60, 120, 300, 900),
+)
+
+PROXY_RESPONSE_COUNTER = Counter(
+    "gateway_proxy_responses_total",
+    "Total number of gateway responses by status family and result",
+    ["route", "method", "stream", "status_family", "result"],
 )
 
 LOKI_PUSH_COUNTER = Counter(
@@ -57,6 +63,11 @@ SESSION_TRACKER_ERRORS_COUNTER = Counter(
     "gateway_session_tracker_errors_total",
     "Session tracker failures while checking or refreshing session state",
     ["operation", "error_type"],
+)
+
+ACTIVE_SESSION_GAUGE = Gauge(
+    "gateway_active_sessions",
+    "Current number of runtime session keys in Valkey DB 0",
 )
 
 
