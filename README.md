@@ -33,6 +33,8 @@ Create deployment settings first:
 ```bash
 cp deploy/.env.example deploy/.env
 # edit deploy/.env
+cp observability/.env.example observability/.env
+# edit observability/.env
 ```
 
 vLLM variant:
@@ -52,7 +54,8 @@ docker compose -f docker-compose.sglang.yaml up -d
 Observability stack:
 
 ```bash
-docker compose --env-file deploy/.env -f observability/docker-compose.yaml up -d
+cd observability
+docker compose -f docker-compose.yaml up -d
 ```
 
 Default ports:
@@ -90,7 +93,7 @@ Generic proxying also supports routes such as:
 | `GATEWAY_BACKEND_BASE_URL` | OpenAI-compatible backend base URL | `http://backend:8000` |
 | `GATEWAY_ENABLE_MAX_COMPLETION_TOKENS_OVERRIDE` | Force `max_completion_tokens` on chat requests | `false` |
 | `GATEWAY_FORCED_MAX_COMPLETION_TOKENS` | Forced value when override is enabled | `1024` |
-| `GATEWAY_REQUEST_LOG_LABEL` | Loki `app` label | `llm-gateway` |
+| `GATEWAY_LOKI_APP_NAME` | Loki `app` label | `llm-gateway` |
 | `GATEWAY_LOKI_ENABLED` | Enable Loki event delivery | `true` |
 | `GATEWAY_LOKI_PUSH_URL` | Loki Push API URL | `http://llm-gateway-loki:3100/loki/api/v1/push` |
 | `GATEWAY_OTEL_ENABLED` | Enable OpenTelemetry tracing | `false` |

@@ -16,7 +16,16 @@ cp deploy/.env.example deploy/.env
 ```
 
 Then edit `deploy/.env` and replace dummy values such as model paths, ports, image
-tags, backend URLs, and Grafana credentials for your host.
+tags, and backend URLs for your host.
+
+Before starting the observability stack, create its local env file:
+
+```bash
+cp observability/.env.example observability/.env
+```
+
+Then edit `observability/.env` and replace dummy values such as ports, image
+tags, and Grafana credentials for your host.
 
 ## vLLM Variant
 
@@ -65,7 +74,8 @@ The SGLang launch script is `deploy/serve_sglang.sh`.
 ## Observability Stack
 
 ```bash
-docker compose --env-file deploy/.env -f observability/docker-compose.yaml up -d
+cd observability
+docker compose -f docker-compose.yaml up -d
 ```
 
 The gateway variants send OTLP traces to `host.docker.internal:4317`, so this
@@ -87,7 +97,8 @@ cd deploy
 docker compose -f docker-compose.vllm.yaml config
 docker compose -f docker-compose.sglang.yaml config
 cd ..
-docker compose --env-file deploy/.env -f observability/docker-compose.yaml config
+cd observability
+docker compose -f docker-compose.yaml config
 ```
 
 Smoke checks after startup:

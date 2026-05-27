@@ -62,8 +62,7 @@ def create_app_state(settings: Settings) -> AppState:
         batch_size=settings.loki_batch_size,
         flush_interval_sec=settings.loki_flush_interval_sec,
         queue_max_size=settings.loki_queue_max_size,
-        request_log_label=settings.request_log_label,
-        environment=settings.environment,
+        loki_app_name=settings.loki_app_name,
     )
     session_tracker = SessionTracker(
         api_url=settings.session_valkey_url,

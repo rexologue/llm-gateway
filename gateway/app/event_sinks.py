@@ -29,8 +29,7 @@ class LokiSink:
         batch_size: int,
         flush_interval_sec: float,
         queue_max_size: int,
-        request_log_label: str,
-        environment: str,
+        loki_app_name: str,
     ) -> None:
         """Initialize a sink with explicit runtime parameters.
 
@@ -43,8 +42,7 @@ class LokiSink:
         self.batch_size = batch_size
         self.flush_interval_sec = flush_interval_sec
         self.queue_max_size = max(0, queue_max_size)
-        self.request_log_label = request_log_label
-        self.environment = environment
+        self.loki_app_name = loki_app_name
         self.queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=self.queue_max_size)
         self._task: asyncio.Task[None] | None = None
         self._client: httpx.AsyncClient | None = None
@@ -135,8 +133,7 @@ class LokiSink:
 
         for event in events:
             stream_labels = {
-                "app": self.request_log_label,
-                "env": self.environment,
+                "app": self.loki_app_name,
                 "bucket": str(event.get("bucket", "unknown")),
                 "route": str(event.get("route", "unknown")),
             }

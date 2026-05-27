@@ -223,7 +223,6 @@ def build_request_event(
     raw_body: bytes,
     decoded_body: str,
     payload: Any | None,
-    log_body_sha256: bool,
 ) -> dict[str, Any]:
     """Build a compact request event for Loki."""
 
@@ -237,7 +236,7 @@ def build_request_event(
         "session_first_request": session_first_request,
         "stream": stream,
         "body_bytes": len(raw_body),
-        "body_sha256": sha256_hexdigest(raw_body, enabled=log_body_sha256),
+        "body_sha256": sha256_hexdigest(raw_body),
         **_header_summary(headers_in),
     }
 
@@ -267,7 +266,6 @@ def build_response_event(
     response_bytes: bytes,
     response_text: str,
     duration_sec: float,
-    log_body_sha256: bool,
     ttft_sec: float | None = None,
     session_init_ttft_sec: float | None = None,
     session_init_e2e_sec: float | None = None,
@@ -297,7 +295,7 @@ def build_response_event(
                 round(session_init_e2e_sec, 6) if session_init_e2e_sec is not None else None
             ),
             "body_bytes": len(response_bytes),
-            "body_sha256": sha256_hexdigest(response_bytes, enabled=log_body_sha256),
+            "body_sha256": sha256_hexdigest(response_bytes),
             "response_content_type": dict(response_headers).get("content-type"),
             "assistant_text": assistant_text,
         }

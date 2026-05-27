@@ -68,15 +68,9 @@ def parse_json_maybe(text: str) -> Any | None:
         return None
 
 
-def sha256_hexdigest(data: bytes, *, enabled: bool) -> str | None:
-    """Return a body hash when enabled, otherwise ``None``.
+def sha256_hexdigest(data: bytes) -> str:
+    """Return a body hash for correlation and deduplication."""
 
-    Hashing is configurable because full-body hashing is useful for correlation
-    and deduplication, but some environments prefer to avoid the extra CPU cost.
-    """
-
-    if not enabled:
-        return None
     return hashlib.sha256(data).hexdigest()
 
 

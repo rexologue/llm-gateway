@@ -28,7 +28,6 @@ def configure_tracing(app: FastAPI, settings: Settings) -> None:
         {
             "service.name": settings.otel_service_name,
             "service.namespace": "llm-serving",
-            "deployment.environment": settings.environment,
         }
     )
     sampler = ParentBased(TraceIdRatioBased(settings.otel_sample_ratio))

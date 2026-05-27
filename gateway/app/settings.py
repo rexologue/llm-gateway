@@ -30,31 +30,36 @@ class Settings:
     startup and should stay stable for the lifetime of the process.
     """
 
-    host: str
-    port: int
+    # Backend routing and request shaping.
     backend_base_url: str
     enable_max_completion_tokens_override: bool
     forced_max_completion_tokens: int
-    environment: str
-    request_log_label: str
+
+    # Gateway HTTP client limits.
     connect_timeout: float
     read_timeout: float
     write_timeout: float
     pool_timeout: float
     http_max_connections: int
     http_max_keepalive_connections: int
+
+    # Loki request/response event delivery.
+    loki_app_name: str
     loki_enabled: bool
     loki_push_url: str
     loki_batch_size: int
     loki_flush_interval_sec: float
     loki_queue_max_size: int
-    log_body_sha256: bool
+
+    # OpenTelemetry trace export.
     otel_enabled: bool
     otel_service_name: str
     otel_exporter_otlp_endpoint: str
     otel_exporter_otlp_protocol: str
     otel_sample_ratio: float
     otel_fastapi_excluded_urls: str
+
+    # Session state.
     session_valkey_url: str
     session_key_prefix: str
     session_ttl_sec: int
@@ -70,8 +75,7 @@ class Settings:
         )
 
         return cls(
-            host=os.getenv("GATEWAY_HOST", "0.0.0.0"),
-            port=int(os.getenv("GATEWAY_PORT", "8080")),
+            # Backend routing and request shaping.
             backend_base_url=os.getenv(
                 "GATEWAY_BACKEND_BASE_URL",
                 "http://backend:8000",
@@ -83,8 +87,8 @@ class Settings:
             forced_max_completion_tokens=int(
                 os.getenv("GATEWAY_FORCED_MAX_COMPLETION_TOKENS", "1024")
             ),
-            environment=os.getenv("GATEWAY_ENV", "local"),
-            request_log_label=os.getenv("GATEWAY_REQUEST_LOG_LABEL", "llm-gateway"),
+
+            # Gateway HTTP client limits.
             connect_timeout=float(os.getenv("GATEWAY_TIMEOUT_CONNECT_SEC", "30")),
             read_timeout=float(os.getenv("GATEWAY_TIMEOUT_READ_SEC", "1800")),
             write_timeout=float(os.getenv("GATEWAY_TIMEOUT_WRITE_SEC", "1800")),
@@ -93,6 +97,9 @@ class Settings:
             http_max_keepalive_connections=int(
                 os.getenv("GATEWAY_HTTP_MAX_KEEPALIVE_CONNECTIONS", "100")
             ),
+
+            # Loki request/response event delivery.
+            loki_app_name=os.getenv("GATEWAY_LOKI_APP_NAME", "llm-gateway"),
             loki_enabled=_get_bool_env("GATEWAY_LOKI_ENABLED", True),
             loki_push_url=os.getenv(
                 "GATEWAY_LOKI_PUSH_URL",
@@ -103,7 +110,8 @@ class Settings:
                 os.getenv("GATEWAY_LOKI_FLUSH_INTERVAL_SEC", "1.0")
             ),
             loki_queue_max_size=int(os.getenv("GATEWAY_LOKI_QUEUE_MAX_SIZE", "10000")),
-            log_body_sha256=_get_bool_env("GATEWAY_LOG_BODY_SHA256", True),
+
+            # OpenTelemetry trace export.
             otel_enabled=_get_bool_env("GATEWAY_OTEL_ENABLED", False),
             otel_service_name=os.getenv("GATEWAY_OTEL_SERVICE_NAME", "llm-gateway"),
             otel_exporter_otlp_endpoint=os.getenv(
@@ -119,6 +127,8 @@ class Settings:
                 "GATEWAY_OTEL_FASTAPI_EXCLUDED_URLS",
                 "/gateway/metrics,/healthz,/$",
             ),
+
+            # Session state.
             session_valkey_url=os.getenv(
                 "GATEWAY_SESSION_VALKEY_URL",
                 "redis://llm-gateway-valkey:6379/0",

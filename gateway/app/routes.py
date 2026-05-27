@@ -366,7 +366,6 @@ def create_router() -> APIRouter:
                         raw_body=raw_body,
                         decoded_body=decoded_body,
                         payload=None,
-                        log_body_sha256=settings.log_body_sha256,
                     )
                 )
                 await state.log_event(
@@ -383,7 +382,6 @@ def create_router() -> APIRouter:
                         response_text=response_text,
                         duration_sec=duration_sec,
                         session_init_e2e_sec=duration_sec if session_first_request else None,
-                        log_body_sha256=settings.log_body_sha256,
                     )
                 )
                 REQUEST_LATENCY.labels(route=route, method=method, stream="false").observe(
@@ -683,7 +681,6 @@ def create_router() -> APIRouter:
                                         raw_body=raw_body,
                                         decoded_body=decoded_body,
                                         payload=payload,
-                                        log_body_sha256=settings.log_body_sha256,
                                     )
                                 )
                                 await state.log_event(
@@ -708,7 +705,6 @@ def create_router() -> APIRouter:
                                         session_init_e2e_sec=(
                                             duration_sec if session_first_request else None
                                         ),
-                                        log_body_sha256=settings.log_body_sha256,
                                     )
                                 )
                                 if stream_error is not None:
@@ -838,7 +834,6 @@ def create_router() -> APIRouter:
                         raw_body=raw_body,
                         decoded_body=decoded_body,
                         payload=payload,
-                        log_body_sha256=settings.log_body_sha256,
                     )
                 )
                 await state.log_event(
@@ -855,7 +850,6 @@ def create_router() -> APIRouter:
                         response_text=response_text,
                         duration_sec=duration_sec,
                         session_init_e2e_sec=duration_sec if session_first_request else None,
-                        log_body_sha256=settings.log_body_sha256,
                     )
                 )
 
@@ -1038,7 +1032,6 @@ def create_router() -> APIRouter:
                 raw_body=raw_body,
                 decoded_body=decoded_body,
                 payload=payload,
-                log_body_sha256=settings.log_body_sha256,
             )
         )
         await state.log_event(
@@ -1054,7 +1047,6 @@ def create_router() -> APIRouter:
                 response_bytes=backend_response.content,
                 response_text=backend_response.text,
                 duration_sec=time.perf_counter() - started_at,
-                log_body_sha256=settings.log_body_sha256,
             )
         )
 
