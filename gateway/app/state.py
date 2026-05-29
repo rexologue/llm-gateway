@@ -9,11 +9,11 @@ from typing import Any
 import httpx
 
 from app.backend import OpenAICompatibleBackend
-from app.event_sinks import LokiSink
 from app.http_utils import utc_now_iso
 from app.session_store import SessionStore
 from app.session_tracker import SessionTracker
 from app.settings import Settings
+from app.tools.loki import LokiEventPublisher
 from app.tracing import current_trace_context
 
 
@@ -24,7 +24,7 @@ class AppState:
     settings: Settings
     http: httpx.AsyncClient
     backend: OpenAICompatibleBackend
-    loki_sink: LokiSink
+    loki_publisher: LokiEventPublisher
     session_tracker: SessionTracker
     session_store: SessionStore
 
@@ -37,7 +37,7 @@ class AppState:
             **current_trace_context(),
             **event,
         }
-        await self.loki_sink.submit(record)
+        await self.loki_publisher.submit(record)
 
 
 def create_app_state(settings: Settings) -> AppState:
@@ -58,7 +58,7 @@ def create_app_state(settings: Settings) -> AppState:
         base_url=settings.backend_base_url,
         http=http_client,
     )
-    loki_sink = LokiSink(
+    loki_publisher = LokiEventPublisher(
         enabled=settings.loki_enabled,
         push_url=settings.loki_push_url,
         batch_size=settings.loki_batch_size,
@@ -82,7 +82,7 @@ def create_app_state(settings: Settings) -> AppState:
         settings=settings,
         http=http_client,
         backend=backend,
-        loki_sink=loki_sink,
+        loki_publisher=loki_publisher,
         session_tracker=session_tracker,
         session_store=session_store,
     )

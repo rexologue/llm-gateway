@@ -20,15 +20,17 @@ def create_app() -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        """Create and tear down shared clients and sinks."""
+        """Create and tear down shared clients and publishers."""
 
         state = create_app_state(settings)
         app.state.gateway_state = state
-        await state.loki_sink.start()
+        await state.loki_publisher.start()
+
         try:
             yield
+
         finally:
-            await state.loki_sink.stop()
+            await state.loki_publisher.stop()
             await state.session_tracker.close()
             await state.session_store.close()
             await state.http.aclose()
@@ -36,6 +38,7 @@ def create_app() -> FastAPI:
     application = FastAPI(title="OpenAI Compatible Gateway", lifespan=lifespan)
     configure_tracing(application, settings)
     application.include_router(create_router())
+
     return application
 
 

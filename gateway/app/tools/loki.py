@@ -1,4 +1,4 @@
-"""Async log sinks used by the gateway."""
+"""Publish structured gateway events to Loki."""
 
 from __future__ import annotations
 
@@ -13,13 +13,8 @@ import orjson
 from app.observability import LOKI_EVENTS_DROPPED_COUNTER, LOKI_PUSH_COUNTER
 
 
-class LokiSink:
-    """Batch log events and push them to Loki using the native push API.
-
-    The sink decouples request handling from network I/O by buffering events in
-    an in-memory queue and flushing either on batch size or on a periodic timer.
-    This keeps request latency stable while still preserving detailed event logs.
-    """
+class LokiEventPublisher:
+    """Batch structured events and publish them through the Loki push API."""
 
     def __init__(
         self,
@@ -31,11 +26,7 @@ class LokiSink:
         queue_max_size: int,
         loki_app_name: str,
     ) -> None:
-        """Initialize a sink with explicit runtime parameters.
-
-        Passing all runtime values directly keeps the sink isolated from global
-        settings and makes the class easier to reuse and test.
-        """
+        """Initialize a background Loki event publisher."""
 
         self.enabled = enabled
         self.push_url = push_url
@@ -43,19 +34,23 @@ class LokiSink:
         self.flush_interval_sec = flush_interval_sec
         self.queue_max_size = max(0, queue_max_size)
         self.loki_app_name = loki_app_name
-        self.queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=self.queue_max_size)
+        self.queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(
+            maxsize=self.queue_max_size
+        )
+
         self._task: asyncio.Task[None] | None = None
         self._client: httpx.AsyncClient | None = None
         self._stopping = False
 
+
     async def start(self) -> None:
-        """Create the HTTP client and background flusher task."""
+        """Create the HTTP client and background publisher task."""
 
         if not self.enabled:
             return
 
         self._client = httpx.AsyncClient(timeout=30.0)
-        self._task = asyncio.create_task(self._run(), name="loki-sink")
+        self._task = asyncio.create_task(self._run(), name="loki-event-publisher")
 
 
     async def stop(self) -> None:
@@ -75,7 +70,7 @@ class LokiSink:
 
 
     async def submit(self, event: dict[str, Any]) -> None:
-        """Queue a single event for asynchronous delivery to Loki."""
+        """Queue one structured event for asynchronous delivery."""
 
         if not self.enabled:
             return
@@ -87,7 +82,7 @@ class LokiSink:
 
 
     async def _run(self) -> None:
-        """Continuously drain the queue and flush batches to Loki."""
+        """Continuously drain the queue and publish batches."""
 
         batch: list[dict[str, Any]] = []
         while True:
@@ -95,7 +90,7 @@ class LokiSink:
                 item = await asyncio.wait_for(self.queue.get(), timeout=self.flush_interval_sec)
                 if item.get("_flush"):
                     if batch:
-                        await self._push_batch(batch)
+                        await self._publish_batch(batch)
                         batch = []
 
                     if self._stopping:
@@ -106,46 +101,38 @@ class LokiSink:
                 batch.append(item)
 
                 if len(batch) >= self.batch_size:
-                    await self._push_batch(batch)
+                    await self._publish_batch(batch)
                     batch = []
 
             except asyncio.TimeoutError:
                 if batch:
-                    await self._push_batch(batch)
+                    await self._publish_batch(batch)
                     batch = []
 
                 if self._stopping and self.queue.empty():
                     break
 
 
-    async def _push_batch(self, events: list[dict[str, Any]]) -> None:
-        """Push a batch of already-collected events to Loki.
-
-        Events are grouped by stable stream labels before compression so Loki
-        stores them efficiently and queries can target logical buckets and
-        gateway routes without parsing each JSON payload.
-        """
+    async def _publish_batch(self, events: list[dict[str, Any]]) -> None:
+        """Publish a grouped event batch to Loki."""
 
         if not events or self._client is None:
             return
 
         grouped: dict[tuple[tuple[str, str], ...], list[list[str]]] = defaultdict(list)
-
         for event in events:
             stream_labels = {
                 "app": self.loki_app_name,
                 "bucket": str(event.get("bucket", "unknown")),
                 "route": str(event.get("route", "unknown")),
             }
-
-            # Sorting turns the label mapping into a stable, hashable key for
-            # batching events into the exact Loki stream they belong to.
             key = tuple(sorted(stream_labels.items()))
-
-            grouped[key].append([
-                str(int(event["ts_unix_ns"])),
-                orjson.dumps(event).decode("utf-8"),
-            ])
+            grouped[key].append(
+                [
+                    str(int(event["ts_unix_ns"])),
+                    orjson.dumps(event).decode("utf-8"),
+                ]
+            )
 
         body = {
             "streams": [
@@ -167,9 +154,8 @@ class LokiSink:
                     "Content-Encoding": "gzip",
                 },
             )
-            
             response.raise_for_status()
             LOKI_PUSH_COUNTER.labels(status="success").inc()
-
+            
         except Exception:
             LOKI_PUSH_COUNTER.labels(status="error").inc()

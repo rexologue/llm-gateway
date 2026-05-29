@@ -5,11 +5,10 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-import orjson
-import redis.asyncio as redis
 from redis.exceptions import RedisError
 
 from app.http_utils import utc_now_iso
+from app.tools.valkey_store import ValkeyJsonStore
 
 logger = logging.getLogger(__name__)
 
@@ -25,34 +24,19 @@ class SessionStore:
         ttl_sec: int,
         max_connections: int,
     ) -> None:
-        """Initialize the Valkey connection pool for persisted sessions."""
+        """Initialize the Valkey-backed persisted session store."""
 
-        self.prefix = prefix
-        self.ttl_sec = max(1, int(ttl_sec))
-        self.pool = redis.ConnectionPool.from_url(
-            api_url,
-            socket_connect_timeout=2.0,
-            socket_timeout=2.0,
-            health_check_interval=30,
+        self.store = ValkeyJsonStore(
+            api_url=api_url,
+            prefix=prefix,
+            default_ttl_sec=ttl_sec,
             max_connections=max_connections,
         )
-        self.redis = redis.Redis(connection_pool=self.pool)
-
-    def _key(self, session_id: str) -> str:
-        """Return the Valkey key for a session id."""
-
-        return f"{self.prefix}{session_id}"
-
-    def _session_id_from_key(self, key: bytes | str) -> str:
-        """Return the external session id encoded in a Valkey key."""
-
-        key_text = key.decode("utf-8") if isinstance(key, bytes) else key
-        return key_text.removeprefix(self.prefix)
 
     async def close(self) -> None:
         """Close the underlying Valkey client."""
 
-        await self.redis.aclose()
+        await self.store.close()
 
     async def save_messages(self, session_id: str | None, messages: Any) -> None:
         """Persist a session's current messages block when it is available."""
@@ -68,36 +52,21 @@ class SessionStore:
         }
 
         try:
-            await self.redis.set(
-                self._key(session_id),
-                orjson.dumps(record),
-                ex=self.ttl_sec,
-            )
+            await self.store.set(session_id, record)
         except RedisError as exc:
             logger.warning("Session store save_messages failed: %s", exc)
 
     async def get_session(self, session_id: str) -> dict[str, Any] | None:
         """Return one stored session record, or None when absent."""
 
-        raw_record = await self.redis.get(self._key(session_id))
-        if raw_record is None:
-            return None
-
-        record = orjson.loads(raw_record)
+        record = await self.store.get(session_id)
         return record if isinstance(record, dict) else None
 
     async def list_session_ids(self) -> list[str]:
         """Return all stored session ids sorted lexicographically."""
 
         session_ids: list[str] = []
-        cursor = 0
-        pattern = f"{self.prefix}*"
-
-        while True:
-            cursor, keys = await self.redis.scan(cursor=cursor, match=pattern, count=100)
-            session_ids.extend(self._session_id_from_key(key) for key in keys)
-
-            if cursor == 0:
-                break
+        async for key in self.store.iter_keys():
+            session_ids.append(self.store.record_id_from_key(key))
 
         return sorted(session_ids)

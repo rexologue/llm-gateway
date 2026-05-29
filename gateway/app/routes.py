@@ -54,11 +54,13 @@ def create_router() -> APIRouter:
 
     router = APIRouter()
 
+
     @router.get("/healthz")
     async def healthz() -> JSONResponse:
         """Expose a minimal liveness endpoint for Docker and external probes."""
 
         return JSONResponse({"ok": True, "uptime_sec": round(uptime_seconds(), 3)})
+
 
     @router.get("/gateway/metrics")
     async def gateway_metrics(request: Request) -> Response:
@@ -66,10 +68,12 @@ def create_router() -> APIRouter:
 
         state = _get_state(request.app)
         active_session_count = await state.session_tracker.active_session_count()
+        
         if active_session_count is not None:
             ACTIVE_SESSION_GAUGE.set(active_session_count)
 
         return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
 
     @router.get("/gateway/session_list")
     async def session_list(request: Request) -> JSONResponse:

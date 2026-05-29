@@ -5,10 +5,10 @@ from __future__ import annotations
 import logging
 
 from opentelemetry import trace
-import redis.asyncio as redis
 from redis.exceptions import RedisError
 
 from app.observability import SESSION_TRACKER_ERRORS_COUNTER
+from app.tools.valkey_store import ValkeyJsonStore
 
 logger = logging.getLogger(__name__)
 
@@ -24,28 +24,19 @@ class SessionTracker:
         ttl_sec: int,
         max_connections: int,
     ) -> None:
-        """Initialize the Valkey connection pool for runtime session state."""
+        """Initialize the Valkey-backed runtime session store."""
 
-        self.prefix = prefix
-        self.ttl_sec = max(1, int(ttl_sec))
-        self.pool = redis.ConnectionPool.from_url(
-            api_url,
-            socket_connect_timeout=2.0,
-            socket_timeout=2.0,
-            health_check_interval=30,
+        self.store = ValkeyJsonStore(
+            api_url=api_url,
+            prefix=prefix,
+            default_ttl_sec=ttl_sec,
             max_connections=max_connections,
         )
-        self.redis = redis.Redis(connection_pool=self.pool)
-
-    def _key(self, session_id: str) -> str:
-        """Return the Valkey key for a session id."""
-
-        return f"{self.prefix}{session_id}"
 
     async def close(self) -> None:
         """Close the underlying Valkey client."""
 
-        await self.redis.aclose()
+        await self.store.close()
 
     async def mark_seen(self, session_id: str | None) -> bool:
         """
@@ -58,65 +49,45 @@ class SessionTracker:
         if session_id is None:
             return False
 
-        key = self._key(session_id)
-
         try:
-            created = await self.redis.set(key, "1", ex=self.ttl_sec, nx=True)
+            created = await self.store.set_if_absent(session_id, True)
             if created:
                 return True
 
-            await self.redis.expire(key, self.ttl_sec)
+            await self.store.touch(session_id)
             return False
 
         except RedisError as exc:
-            error_type = type(exc).__name__
-            SESSION_TRACKER_ERRORS_COUNTER.labels(
-                operation="mark_seen",
-                error_type=error_type,
-            ).inc()
-            logger.warning("Session tracker mark_seen failed: %s", exc)
-
-            span = trace.get_current_span()
-            if span.get_span_context().is_valid:
-                span.record_exception(exc)
-                span.add_event(
-                    "session_tracker.error",
-                    {
-                        "operation": "mark_seen",
-                        "error.type": error_type,
-                    },
-                )
-
+            self._record_error("mark_seen", exc)
             return False
 
     async def active_session_count(self) -> int | None:
         """Return the current number of runtime session keys, if Valkey is available."""
 
-        pattern = f"{self.prefix}*"
-        count = 0
-
         try:
-            async for _key in self.redis.scan_iter(match=pattern, count=1000):
-                count += 1
-            return count
+            return await self.store.count_matching()
 
         except RedisError as exc:
-            error_type = type(exc).__name__
-            SESSION_TRACKER_ERRORS_COUNTER.labels(
-                operation="active_session_count",
-                error_type=error_type,
-            ).inc()
-            logger.warning("Session tracker active_session_count failed: %s", exc)
-
-            span = trace.get_current_span()
-            if span.get_span_context().is_valid:
-                span.record_exception(exc)
-                span.add_event(
-                    "session_tracker.error",
-                    {
-                        "operation": "active_session_count",
-                        "error.type": error_type,
-                    },
-                )
-
+            self._record_error("active_session_count", exc)
             return None
+
+    def _record_error(self, operation: str, exc: RedisError) -> None:
+        """Record a Valkey failure in logs, metrics, and the current trace."""
+
+        error_type = type(exc).__name__
+        SESSION_TRACKER_ERRORS_COUNTER.labels(
+            operation=operation,
+            error_type=error_type,
+        ).inc()
+        logger.warning("Session tracker %s failed: %s", operation, exc)
+
+        span = trace.get_current_span()
+        if span.get_span_context().is_valid:
+            span.record_exception(exc)
+            span.add_event(
+                "session_tracker.error",
+                {
+                    "operation": operation,
+                    "error.type": error_type,
+                },
+            )
