@@ -20,10 +20,6 @@ def configure_tracing(app: FastAPI, settings: Settings) -> None:
     if not settings.otel_enabled:
         return
 
-    protocol = settings.otel_exporter_otlp_protocol.strip().lower()
-    if protocol != "grpc":
-        raise ValueError("Only GATEWAY_OTEL_EXPORTER_OTLP_PROTOCOL=grpc is supported")
-
     resource = Resource.create(
         {
             "service.name": settings.otel_service_name,

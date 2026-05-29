@@ -19,11 +19,13 @@ class OpenAICompatibleBackend:
         self.base_url = base_url.rstrip("/")
         self.http = http
 
+
     def url_for(self, route: str) -> str:
         """Return the absolute backend URL for a gateway route."""
 
         path = route if route.startswith("/") else f"/{route}"
         return f"{self.base_url}{path}"
+
 
     def forwarded_headers(
         self,
@@ -36,9 +38,12 @@ class OpenAICompatibleBackend:
 
         forwarded = strip_hop_by_hop_headers(headers)
         forwarded["x-request-id"] = request_id
+        
         if session_id is not None:
             forwarded["x-session-id"] = session_id
+
         return forwarded
+
 
     def build_request(
         self,
@@ -57,10 +62,12 @@ class OpenAICompatibleBackend:
             content=content,
         )
 
+
     async def send(self, request: httpx.Request, *, stream: bool) -> httpx.Response:
         """Send a prebuilt backend request."""
 
         return await self.http.send(request, stream=stream)
+
 
     async def post(
         self,
@@ -76,6 +83,7 @@ class OpenAICompatibleBackend:
             headers=headers,
             content=content,
         )
+
 
     async def request(
         self,
@@ -95,3 +103,4 @@ class OpenAICompatibleBackend:
             content=content,
             params=params,
         )
+

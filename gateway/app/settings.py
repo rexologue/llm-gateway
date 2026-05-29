@@ -73,7 +73,6 @@ class Settings:
     otel_enabled: bool
     otel_service_name: str
     otel_exporter_otlp_endpoint: str
-    otel_exporter_otlp_protocol: str
     otel_sample_ratio: float
     otel_fastapi_excluded_urls: str
 
@@ -146,10 +145,6 @@ class Settings:
             otel_exporter_otlp_endpoint=os.getenv(
                 "GATEWAY_OTEL_EXPORTER_OTLP_ENDPOINT",
                 "http://otel-collector:4317",
-            ),
-            otel_exporter_otlp_protocol=os.getenv(
-                "GATEWAY_OTEL_EXPORTER_OTLP_PROTOCOL",
-                "grpc",
             ),
             otel_sample_ratio=otel_sample_ratio,
             otel_fastapi_excluded_urls=os.getenv(

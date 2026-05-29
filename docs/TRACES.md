@@ -18,7 +18,6 @@ Tracing is controlled by deployment environment variables:
 | `GATEWAY_OTEL_ENABLED` | Enables OTLP trace export and FastAPI instrumentation | `false` |
 | `GATEWAY_OTEL_SERVICE_NAME` | OpenTelemetry `service.name` resource attribute | `llm-gateway` |
 | `GATEWAY_OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP/gRPC collector endpoint | `http://otel-collector:4317` |
-| `GATEWAY_OTEL_EXPORTER_OTLP_PROTOCOL` | Export protocol; only `grpc` is supported | `grpc` |
 | `GATEWAY_OTEL_SAMPLE_RATIO` | Trace sampling ratio from `0.0` to `1.0` | `1.0` |
 | `GATEWAY_OTEL_FASTAPI_EXCLUDED_URLS` | Comma-separated FastAPI instrumentation exclusions | `/gateway/metrics,/healthz,/$` |
 
