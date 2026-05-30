@@ -155,22 +155,54 @@ The compose files include optional test-runner services under the `test`
 profile. They send one non-streaming OpenAI-compatible chat completion request
 and fail when the backend/gateway does not return a valid answer.
 
-Run direct backend smoke tests from `deploy/llm`:
+The normal workflow is:
+
+1. Start the stack in detached mode.
+2. Run the smoke-test service as a one-off container.
+3. Keep the stack running after the test container exits.
+
+Run direct backend smoke tests from `deploy/llm`.
+
+For vLLM:
 
 ```bash
 docker compose \
   --env-file .env \
   -f docker-compose.vllm.yaml \
+  up -d --build
+
+docker compose \
+  --env-file .env \
+  -f docker-compose.vllm.yaml \
   --profile test \
-  up --build --abort-on-container-exit --exit-code-from llm-smoke-tests
+  run --rm llm-smoke-tests
 ```
+
+One-command variant:
+
+```bash
+docker compose --env-file .env -f docker-compose.vllm.yaml up -d --build && docker compose --env-file .env -f docker-compose.vllm.yaml --profile test run --rm llm-smoke-tests
+```
+
+For SGLang:
 
 ```bash
 docker compose \
   --env-file .env \
   -f docker-compose.sglang.yaml \
+  up -d --build
+
+docker compose \
+  --env-file .env \
+  -f docker-compose.sglang.yaml \
   --profile test \
-  up --build --abort-on-container-exit --exit-code-from llm-smoke-tests
+  run --rm llm-smoke-tests
+```
+
+One-command variant:
+
+```bash
+docker compose --env-file .env -f docker-compose.sglang.yaml up -d --build && docker compose --env-file .env -f docker-compose.sglang.yaml --profile test run --rm llm-smoke-tests
 ```
 
 Run gateway smoke tests from `deploy/gateway` after the LLM stack is reachable
@@ -180,9 +212,24 @@ through `GATEWAY_BACKEND_BASE_URL`:
 docker compose \
   --env-file .env \
   -f docker-compose.yaml \
+  up -d --build
+
+docker compose \
+  --env-file .env \
+  -f docker-compose.yaml \
   --profile test \
-  up --build --abort-on-container-exit --exit-code-from gateway-smoke-tests
+  run --rm gateway-smoke-tests
 ```
+
+One-command variant:
+
+```bash
+docker compose --env-file .env -f docker-compose.yaml up -d --build && docker compose --env-file .env -f docker-compose.yaml --profile test run --rm gateway-smoke-tests
+```
+
+`run --rm` returns the pytest exit code and removes only the finished test
+container. It does not stop the backend, gateway, Prometheus, Loki, Tempo, or
+exporters.
 
 The prompt, model, timeout, and optional API key are passed to the smoke test
 container through `env_file: .env`:
