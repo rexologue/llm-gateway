@@ -141,7 +141,6 @@ services:
 
     ports:
       - "${GATEWAY_HOST}:${GATEWAY_OTEL_GRPC_PORT}:4317"
-      - "${GATEWAY_HOST}:${GATEWAY_OTEL_HTTP_PORT}:4318"
       - "${GATEWAY_HOST}:${GATEWAY_OTEL_HEALTH_PORT}:13133"
 
     volumes:

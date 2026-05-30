@@ -111,7 +111,6 @@ Gateway-side useful URLs:
 - Loki: `http://0.0.0.0:9092`
 - Tempo: `http://0.0.0.0:3200`
 - OTLP/gRPC collector endpoint: `0.0.0.0:4317`
-- OTLP/HTTP collector endpoint: `0.0.0.0:4318`
 
 Gateway configs:
 
