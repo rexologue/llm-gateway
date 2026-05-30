@@ -33,10 +33,12 @@ class SessionStore:
             max_connections=max_connections,
         )
 
+
     async def close(self) -> None:
         """Close the underlying Valkey client."""
 
         await self.store.close()
+
 
     async def save_messages(self, session_id: str | None, messages: Any) -> None:
         """Persist a session's current messages block when it is available."""
@@ -56,11 +58,13 @@ class SessionStore:
         except RedisError as exc:
             logger.warning("Session store save_messages failed: %s", exc)
 
+
     async def get_session(self, session_id: str) -> dict[str, Any] | None:
         """Return one stored session record, or None when absent."""
 
         record = await self.store.get(session_id)
         return record if isinstance(record, dict) else None
+
 
     async def list_session_ids(self) -> list[str]:
         """Return all stored session ids sorted lexicographically."""

@@ -33,10 +33,12 @@ class SessionTracker:
             max_connections=max_connections,
         )
 
+
     async def close(self) -> None:
         """Close the underlying Valkey client."""
 
         await self.store.close()
+
 
     async def mark_seen(self, session_id: str | None) -> bool:
         """
@@ -61,6 +63,7 @@ class SessionTracker:
             self._record_error("mark_seen", exc)
             return False
 
+
     async def active_session_count(self) -> int | None:
         """Return the current number of runtime session keys, if Valkey is available."""
 
@@ -70,6 +73,7 @@ class SessionTracker:
         except RedisError as exc:
             self._record_error("active_session_count", exc)
             return None
+
 
     def _record_error(self, operation: str, exc: RedisError) -> None:
         """Record a Valkey failure in logs, metrics, and the current trace."""

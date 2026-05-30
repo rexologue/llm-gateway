@@ -149,7 +149,7 @@ class Settings:
             otel_sample_ratio=otel_sample_ratio,
             otel_fastapi_excluded_urls=os.getenv(
                 "GATEWAY_OTEL_FASTAPI_EXCLUDED_URLS",
-                "/gateway/metrics,/healthz,/$",
+                "/gateway/metrics,/health,/$",
             ),
 
             # Session state.

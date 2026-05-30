@@ -26,6 +26,7 @@ def configure_tracing(app: FastAPI, settings: Settings) -> None:
             "service.namespace": "llm-serving",
         }
     )
+    
     sampler = ParentBased(TraceIdRatioBased(settings.otel_sample_ratio))
     provider = TracerProvider(resource=resource, sampler=sampler)
     provider.add_span_processor(

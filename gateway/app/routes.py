@@ -6,6 +6,7 @@ import asyncio
 import time
 from typing import AsyncIterator, cast
 
+import httpx
 from fastapi import APIRouter, FastAPI, Request, Response
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from opentelemetry import trace
@@ -13,7 +14,6 @@ from opentelemetry.trace import Status, StatusCode
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from redis.exceptions import RedisError
 
-from app.gateway_errors import log_gateway_error
 from app.gateway_responses import gateway_response_headers
 from app.http_utils import (
     parse_json_maybe,
@@ -21,13 +21,11 @@ from app.http_utils import (
     session_id_from_headers,
 )
 from app.llm_payloads import model_label
-from app.log_payloads import build_request_event, build_response_event
 from app.observability import (
     ACTIVE_SESSION_GAUGE,
     REQUEST_COUNTER,
     REQUEST_LATENCY,
     SESSION_INIT_TTFT,
-    uptime_seconds,
 )
 from app.proxy_metrics import record_proxy_response
 from app.request_shaping import apply_chat_payload_overrides, apply_generic_payload_overrides
@@ -55,11 +53,34 @@ def create_router() -> APIRouter:
     router = APIRouter()
 
 
-    @router.get("/healthz")
-    async def healthz() -> JSONResponse:
-        """Expose a minimal liveness endpoint for Docker and external probes."""
+    @router.get("/health")
+    async def health(request: Request) -> Response:
+        """Return the backend health endpoint response."""
 
-        return JSONResponse({"ok": True, "uptime_sec": round(uptime_seconds(), 3)})
+        state = _get_state(request.app)
+
+        try:
+            backend_response = await state.backend.request(
+                method="GET",
+                route="/health",
+                headers={},
+                content=b"",
+            )
+        except httpx.HTTPError as exc:
+            return JSONResponse(
+                {
+                    "ok": False,
+                    "backend": "unavailable",
+                    "detail": type(exc).__name__,
+                },
+                status_code=503,
+            )
+
+        return Response(
+            content=backend_response.content,
+            status_code=backend_response.status_code,
+            media_type=backend_response.headers.get("content-type"),
+        )
 
 
     @router.get("/gateway/metrics")
@@ -90,6 +111,7 @@ def create_router() -> APIRouter:
 
         return JSONResponse(session_ids)
 
+
     @router.get("/gateway/session/{session_id}")
     async def session_get(session_id: str, request: Request) -> JSONResponse:
         """Return one persisted chat session by external session id."""
@@ -107,6 +129,7 @@ def create_router() -> APIRouter:
             return JSONResponse({"error": "session not found"}, status_code=404)
 
         return JSONResponse(session)
+
 
     @router.api_route("/v1/chat/completions", methods=["POST"])
     async def chat_completions(request: Request) -> Response:
@@ -126,6 +149,18 @@ def create_router() -> APIRouter:
         session_first_request = await state.session_tracker.mark_seen(session_id)
 
         payload = parse_json_maybe(decoded_body)
+        log_context = state.loki.context(
+            route=route,
+            method=method,
+            request_id=request_id,
+            session_id=session_id,
+            session_first_request=session_first_request,
+            stream=False,
+            headers_in=headers_in,
+            raw_body=raw_body,
+            payload=payload if isinstance(payload, dict) else None,
+        )
+
         if not isinstance(payload, dict):
             stream = False
             model = "unknown"
@@ -145,6 +180,7 @@ def create_router() -> APIRouter:
                 session_first_request=session_first_request,
             )
             REQUEST_COUNTER.labels(route=route, method=method, stream="false").inc()
+            await log_context.request()
 
             with tracer.start_as_current_span(
                 "llm.gateway.request",
@@ -169,34 +205,12 @@ def create_router() -> APIRouter:
                     },
                 )
                 span.set_status(Status(StatusCode.ERROR))
-                await state.log_event(
-                    **build_request_event(
-                        route=route,
-                        method=method,
-                        request_id=request_id,
-                        session_id=session_id,
-                        session_first_request=session_first_request,
-                        stream=stream,
-                        headers_in=headers_in,
-                        raw_body=raw_body,
-                        payload=None,
-                    )
-                )
-                await state.log_event(
-                    **build_response_event(
-                        route=route,
-                        method=method,
-                        request_id=request_id,
-                        session_id=session_id,
-                        session_first_request=session_first_request,
-                        stream=stream,
-                        status_code=status_code,
-                        response_headers=response_headers,
-                        response_bytes=response_body,
-                        response_text=response_text,
-                        duration_sec=duration_sec,
-                        session_init_e2e_sec=duration_sec if session_first_request else None,
-                    )
+                await log_context.response(
+                    status_code=status_code,
+                    response_headers=response_headers,
+                    response_bytes=response_body,
+                    response_text=response_text,
+                    e2e_sec=duration_sec,
                 )
                 REQUEST_LATENCY.labels(route=route, method=method, stream="false").observe(
                     duration_sec
@@ -240,6 +254,10 @@ def create_router() -> APIRouter:
 
         stream = bool(payload.get("stream"))
         model = model_label(payload)
+        log_context.stream = stream
+        log_context.raw_body = raw_body
+        log_context.payload = payload
+        await log_context.request()
         record_session_request(
             route=route,
             method=method,
@@ -312,17 +330,7 @@ def create_router() -> APIRouter:
                 REQUEST_LATENCY.labels(route=route, method=method, stream="true").observe(
                     duration_sec
                 )
-                await log_gateway_error(
-                    state=state,
-                    route=route,
-                    method=method,
-                    request_id=request_id,
-                    session_id=session_id,
-                    session_first_request=session_first_request,
-                    stream=True,
-                    error=exc,
-                    duration_sec=duration_sec,
-                )
+                await log_context.error(exc, e2e_sec=duration_sec)
                 observe_session_e2e(
                     session_first_request=session_first_request,
                     route=route,
@@ -357,17 +365,7 @@ def create_router() -> APIRouter:
                 REQUEST_LATENCY.labels(route=route, method=method, stream="true").observe(
                     duration_sec
                 )
-                await log_gateway_error(
-                    state=state,
-                    route=route,
-                    method=method,
-                    request_id=request_id,
-                    session_id=session_id,
-                    session_first_request=session_first_request,
-                    stream=True,
-                    error=exc,
-                    duration_sec=duration_sec,
-                )
+                await log_context.error(exc, e2e_sec=duration_sec)
                 observe_session_e2e(
                     session_first_request=session_first_request,
                     route=route,
@@ -482,55 +480,18 @@ def create_router() -> APIRouter:
                             )
 
                             try:
-                                await state.log_event(
-                                    **build_request_event(
-                                        route=route,
-                                        method=method,
-                                        request_id=request_id,
-                                        session_id=session_id,
-                                        session_first_request=session_first_request,
-                                        stream=True,
-                                        headers_in=headers_in,
-                                        raw_body=raw_body,
-                                        payload=payload,
-                                    )
-                                )
-                                await state.log_event(
-                                    **build_response_event(
-                                        route=route,
-                                        method=method,
-                                        request_id=request_id,
-                                        session_id=session_id,
-                                        session_first_request=session_first_request,
-                                        stream=True,
+                                if stream_error is None:
+                                    await log_context.response(
                                         status_code=status_code,
                                         response_headers=response_headers,
                                         response_bytes=response_bytes,
                                         response_text=body_text,
-                                        duration_sec=duration_sec,
+                                        e2e_sec=duration_sec,
                                         ttft_sec=ttft_sec,
-                                        session_init_ttft_sec=(
-                                            ttft_sec
-                                            if session_first_request and ttft_sec is not None
-                                            else None
-                                        ),
-                                        session_init_e2e_sec=(
-                                            duration_sec if session_first_request else None
-                                        ),
                                     )
-                                )
-                                if stream_error is not None:
-                                    await log_gateway_error(
-                                        state=state,
-                                        route=route,
-                                        method=method,
-                                        request_id=request_id,
-                                        session_id=session_id,
-                                        session_first_request=session_first_request,
-                                        stream=True,
-                                        error=stream_error,
-                                        duration_sec=duration_sec,
-                                    )
+                                else:
+                                    await log_context.error(stream_error, e2e_sec=duration_sec)
+
                                 REQUEST_LATENCY.labels(
                                     route=route,
                                     method=method,
@@ -623,34 +584,12 @@ def create_router() -> APIRouter:
                 )
                 mark_error_if_needed(span, status_code)
 
-                await state.log_event(
-                    **build_request_event(
-                        route=route,
-                        method=method,
-                        request_id=request_id,
-                        session_id=session_id,
-                        session_first_request=session_first_request,
-                        stream=False,
-                        headers_in=headers_in,
-                        raw_body=raw_body,
-                        payload=payload,
-                    )
-                )
-                await state.log_event(
-                    **build_response_event(
-                        route=route,
-                        method=method,
-                        request_id=request_id,
-                        session_id=session_id,
-                        session_first_request=session_first_request,
-                        stream=False,
-                        status_code=status_code,
-                        response_headers=response_headers,
-                        response_bytes=backend_response.content,
-                        response_text=response_text,
-                        duration_sec=duration_sec,
-                        session_init_e2e_sec=duration_sec if session_first_request else None,
-                    )
+                await log_context.response(
+                    status_code=status_code,
+                    response_headers=response_headers,
+                    response_bytes=backend_response.content,
+                    response_text=response_text,
+                    e2e_sec=duration_sec,
                 )
 
                 REQUEST_LATENCY.labels(route=route, method=method, stream="false").observe(
@@ -696,17 +635,7 @@ def create_router() -> APIRouter:
                 REQUEST_LATENCY.labels(route=route, method=method, stream="false").observe(
                     duration_sec
                 )
-                await log_gateway_error(
-                    state=state,
-                    route=route,
-                    method=method,
-                    request_id=request_id,
-                    session_id=session_id,
-                    session_first_request=session_first_request,
-                    stream=False,
-                    error=exc,
-                    duration_sec=duration_sec,
-                )
+                await log_context.error(exc, e2e_sec=duration_sec)
                 observe_session_e2e(
                     session_first_request=session_first_request,
                     route=route,
@@ -740,17 +669,7 @@ def create_router() -> APIRouter:
                 REQUEST_LATENCY.labels(route=route, method=method, stream="false").observe(
                     duration_sec
                 )
-                await log_gateway_error(
-                    state=state,
-                    route=route,
-                    method=method,
-                    request_id=request_id,
-                    session_id=session_id,
-                    session_first_request=session_first_request,
-                    stream=False,
-                    error=exc,
-                    duration_sec=duration_sec,
-                )
+                await log_context.error(exc, e2e_sec=duration_sec)
                 observe_session_e2e(
                     session_first_request=session_first_request,
                     route=route,
@@ -769,6 +688,7 @@ def create_router() -> APIRouter:
                     cancelled=False,
                 )
                 raise
+
 
     @router.api_route(
         "/v1/{full_path:path}",
@@ -789,6 +709,7 @@ def create_router() -> APIRouter:
         session_id = session_id_from_headers(headers_in)
         session_first_request = False
         payload = parse_json_maybe(decoded_body)
+
         if isinstance(payload, dict) and settings.forced_thinking_disabled:
             payload, raw_body, decoded_body = apply_generic_payload_overrides(
                 payload,
@@ -800,54 +721,75 @@ def create_router() -> APIRouter:
             request_id=request_id,
             session_id=session_id,
         )
-
-        backend_response = await state.backend.request(
-            method=method,
+        log_context = state.loki.context(
             route=route,
-            headers=backend_headers,
-            content=raw_body,
-            params=request.query_params,
+            method=method,
+            request_id=request_id,
+            session_id=session_id,
+            session_first_request=session_first_request,
+            stream=False,
+            headers_in=headers_in,
+            raw_body=raw_body,
+            payload=payload,
         )
+        await log_context.request()
+
+        try:
+            backend_response = await state.backend.request(
+                method=method,
+                route=route,
+                headers=backend_headers,
+                content=raw_body,
+                params=request.query_params,
+            )
+        except asyncio.CancelledError as exc:
+            duration_sec = time.perf_counter() - started_at
+            await log_context.error(exc, e2e_sec=duration_sec)
+            REQUEST_LATENCY.labels(route=route, method=method, stream="false").observe(
+                duration_sec
+            )
+            record_proxy_response(
+                route=route,
+                method=method,
+                stream=False,
+                status_code=None,
+                cancelled=True,
+            )
+            raise
+
+        except Exception as exc:
+            duration_sec = time.perf_counter() - started_at
+            await log_context.error(exc, e2e_sec=duration_sec)
+            REQUEST_LATENCY.labels(route=route, method=method, stream="false").observe(
+                duration_sec
+            )
+            record_proxy_response(
+                route=route,
+                method=method,
+                stream=False,
+                status_code=None,
+                cancelled=False,
+            )
+            raise
+
         response_headers = gateway_response_headers(
             backend_response.headers,
             request_id=request_id,
             session_id=session_id,
         )
+        duration_sec = time.perf_counter() - started_at
 
-        # Non-generation routes share the same compact shape so dashboards and
-        # retention policies can treat them as one operational bucket.
-        await state.log_event(
-            **build_request_event(
-                route=route,
-                method=method,
-                request_id=request_id,
-                session_id=session_id,
-                session_first_request=session_first_request,
-                stream=False,
-                headers_in=headers_in,
-                raw_body=raw_body,
-                payload=payload,
-            )
-        )
-        await state.log_event(
-            **build_response_event(
-                route=route,
-                method=method,
-                request_id=request_id,
-                session_id=session_id,
-                session_first_request=session_first_request,
-                stream=False,
-                status_code=backend_response.status_code,
-                response_headers=response_headers,
-                response_bytes=backend_response.content,
-                response_text=backend_response.text,
-                duration_sec=time.perf_counter() - started_at,
-            )
+        await log_context.response(
+            status_code=backend_response.status_code,
+            response_headers=response_headers,
+            response_bytes=backend_response.content,
+            response_text=backend_response.text,
+            e2e_sec=duration_sec,
         )
 
         REQUEST_COUNTER.labels(route=route, method=method, stream="false").inc()
         REQUEST_LATENCY.labels(route=route, method=method, stream="false").observe(
-            time.perf_counter() - started_at
+            duration_sec
         )
         record_proxy_response(
             route=route,
@@ -856,12 +798,14 @@ def create_router() -> APIRouter:
             status_code=backend_response.status_code,
             cancelled=False,
         )
+        
         return Response(
             content=backend_response.content,
             status_code=backend_response.status_code,
             headers=response_headers,
             media_type=backend_response.headers.get("content-type"),
         )
+
 
     @router.get("/")
     async def root() -> PlainTextResponse:

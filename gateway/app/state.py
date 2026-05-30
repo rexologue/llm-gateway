@@ -2,19 +2,16 @@
 
 from __future__ import annotations
 
-import time
 from dataclasses import dataclass
-from typing import Any
 
 import httpx
 
 from app.backend import OpenAICompatibleBackend
-from app.http_utils import utc_now_iso
+from app.loki_logging import GatewayLokiLogger
 from app.session_store import SessionStore
 from app.session_tracker import SessionTracker
 from app.settings import Settings
 from app.tools.loki import LokiEventPublisher
-from app.tracing import current_trace_context
 
 
 @dataclass(slots=True)
@@ -24,24 +21,13 @@ class AppState:
     settings: Settings
     http: httpx.AsyncClient
     backend: OpenAICompatibleBackend
-    loki_publisher: LokiEventPublisher
+    loki: GatewayLokiLogger
     session_tracker: SessionTracker
     session_store: SessionStore
 
-    async def log_event(self, **event: Any) -> None:
-        """Attach timestamps and enqueue an event for Loki delivery."""
-
-        record = {
-            "ts": utc_now_iso(),
-            "ts_unix_ns": time.time_ns(),
-            **current_trace_context(),
-            **event,
-        }
-        await self.loki_publisher.submit(record)
-
 
 def create_app_state(settings: Settings) -> AppState:
-    """Construct the shared clients and sinks used during request handling."""
+    """Construct the shared clients and loggers used during request handling."""
 
     timeout = httpx.Timeout(
         connect=settings.connect_timeout,
@@ -66,6 +52,7 @@ def create_app_state(settings: Settings) -> AppState:
         queue_max_size=settings.loki_queue_max_size,
         loki_app_name=settings.loki_app_name,
     )
+    loki = GatewayLokiLogger(loki_publisher)
     session_tracker = SessionTracker(
         api_url=settings.session_runtime_valkey_url,
         prefix=settings.session_key_prefix,
@@ -82,7 +69,7 @@ def create_app_state(settings: Settings) -> AppState:
         settings=settings,
         http=http_client,
         backend=backend,
-        loki_publisher=loki_publisher,
+        loki=loki,
         session_tracker=session_tracker,
         session_store=session_store,
     )

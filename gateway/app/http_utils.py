@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import uuid
 from datetime import UTC, datetime
 from typing import Any, Mapping
@@ -10,11 +9,22 @@ from typing import Any, Mapping
 import httpx
 import orjson
 
-REDACTED_HEADERS = {
+SENSITIVE_KEYS = {
+    "access_key",
+    "access_token",
+    "api_key",
+    "apikey",
     "authorization",
     "cookie",
-    "set-cookie",
+    "id_token",
+    "password",
+    "passwd",
+    "private_key",
     "proxy-authorization",
+    "refresh_token",
+    "secret",
+    "set-cookie",
+    "token",
     "x-api-key",
 }
 
@@ -47,7 +57,7 @@ def sanitize_headers(headers: Mapping[str, str]) -> dict[str, str]:
 
     sanitized: dict[str, str] = {}
     for key, value in headers.items():
-        sanitized[key] = "***REDACTED***" if key.lower() in REDACTED_HEADERS else value
+        sanitized[key] = "***REDACTED***" if key.lower() in SENSITIVE_KEYS else value
 
     return sanitized
 
@@ -66,12 +76,6 @@ def parse_json_maybe(text: str) -> Any | None:
     
     except Exception:
         return None
-
-
-def sha256_hexdigest(data: bytes) -> str:
-    """Return a body hash for correlation and deduplication."""
-
-    return hashlib.sha256(data).hexdigest()
 
 
 def request_id_from_headers(headers: Mapping[str, str]) -> str:

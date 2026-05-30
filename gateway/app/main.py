@@ -24,13 +24,13 @@ def create_app() -> FastAPI:
 
         state = create_app_state(settings)
         app.state.gateway_state = state
-        await state.loki_publisher.start()
+        await state.loki.start()
 
         try:
             yield
 
         finally:
-            await state.loki_publisher.stop()
+            await state.loki.stop()
             await state.session_tracker.close()
             await state.session_store.close()
             await state.http.aclose()

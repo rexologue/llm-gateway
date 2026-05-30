@@ -119,7 +119,7 @@ docker compose -f docker-compose.yaml config
 Smoke checks after startup:
 
 ```bash
-curl -fsS http://127.0.0.1:9090/healthz
+curl -fsS http://127.0.0.1:9090/health
 curl -fsS http://127.0.0.1:9090/gateway/metrics
 curl -fsS http://127.0.0.1:9090/v1/models
 ```
