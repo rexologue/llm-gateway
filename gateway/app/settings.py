@@ -11,6 +11,8 @@ import os
 from dataclasses import dataclass
 from urllib.parse import urlsplit, urlunsplit
 
+from app.route_paths import DEFAULT_OTEL_FASTAPI_EXCLUDED_URLS
+
 
 def _get_bool_env(name: str, default: bool) -> bool:
     """Return a boolean environment variable using common true/false strings."""
@@ -149,7 +151,7 @@ class Settings:
             otel_sample_ratio=otel_sample_ratio,
             otel_fastapi_excluded_urls=os.getenv(
                 "GATEWAY_OTEL_FASTAPI_EXCLUDED_URLS",
-                "/gateway/metrics,/health,/$",
+                DEFAULT_OTEL_FASTAPI_EXCLUDED_URLS,
             ),
 
             # Session state.

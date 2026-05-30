@@ -73,7 +73,7 @@ def parse_json_maybe(text: str) -> Any | None:
 
     try:
         return orjson.loads(text)
-    
+
     except Exception:
         return None
 
@@ -93,5 +93,5 @@ def session_id_from_headers(headers: Mapping[str, str]) -> str | None:
     for key, value in headers.items():
         if key.lower() == "x-session-id" and value.strip():
             return value.strip()
-        
+
     return None

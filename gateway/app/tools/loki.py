@@ -10,7 +10,7 @@ from typing import Any
 import httpx
 import orjson
 
-from app.observability import LOKI_EVENTS_DROPPED_COUNTER, LOKI_PUSH_COUNTER
+from app.metrics import GatewayMetrics
 
 
 class LokiEventPublisher:
@@ -25,9 +25,11 @@ class LokiEventPublisher:
         flush_interval_sec: float,
         queue_max_size: int,
         loki_app_name: str,
+        metrics: GatewayMetrics,
     ) -> None:
         """Initialize a background Loki event publisher."""
 
+        self.metrics = metrics
         self.enabled = enabled
         self.push_url = push_url
         self.batch_size = batch_size
@@ -78,7 +80,7 @@ class LokiEventPublisher:
         try:
             self.queue.put_nowait(event)
         except asyncio.QueueFull:
-            LOKI_EVENTS_DROPPED_COUNTER.labels(reason="queue_full").inc()
+            self.metrics.loki_event_dropped("queue_full")
 
 
     async def _run(self) -> None:
@@ -155,7 +157,7 @@ class LokiEventPublisher:
                 },
             )
             response.raise_for_status()
-            LOKI_PUSH_COUNTER.labels(status="success").inc()
-            
+            self.metrics.loki_push("success")
+
         except Exception:
-            LOKI_PUSH_COUNTER.labels(status="error").inc()
+            self.metrics.loki_push("error")

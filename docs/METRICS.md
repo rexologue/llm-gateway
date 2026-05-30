@@ -1,6 +1,6 @@
 # Metrics
 
-The gateway exposes only its own metrics:
+The gateway exposes only its own Prometheus metrics:
 
 ```text
 GET /gateway/metrics
@@ -14,47 +14,35 @@ per-request timing and span-level investigation.
 
 ## Gateway Metrics
 
-`gateway_proxy_requests_total`
+`gateway_requests_total`
 
-- Counter for all requests accepted by the gateway route handlers.
-- Increments once per request after the gateway determines the logical route and
-  stream mode.
-- It includes malformed JSON chat requests that are answered directly by the
+- Counter for all requests accepted by gateway route handlers.
+- Increments once after the gateway determines route and stream mode.
+- Includes malformed JSON chat requests that are answered directly by the
   gateway with `400`.
 - Labels: `route`, `method`, `stream`.
 
-`gateway_proxy_request_latency_seconds`
+`gateway_responses_total`
 
-- End-to-end gateway latency from request receipt until the gateway has either
-  built the final non-streaming response or finished iterating a streaming
-  response.
-- For streaming requests, this measures the full stream duration, not TTFT.
-- Failed backend calls and client cancellations are still observed.
-- Labels: `route`, `method`, `stream`.
-
-`gateway_proxy_responses_total`
-
-- Counter for completed gateway proxy outcomes.
+- Counter for terminal gateway outcomes.
 - `status_family` is a coarse HTTP family such as `2xx`, `4xx`, `5xx`, or
   `unknown` when no response status was available.
 - `result` is `success`, `error`, or `cancelled`.
-- This metric is intended for dashboard error-rate panels without adding
-  high-cardinality labels.
 - Labels: `route`, `method`, `stream`, `status_family`, `result`.
 
-`gateway_proxy_loki_push_total`
+`gateway_request_e2e_seconds`
 
-- Number of batch push attempts made by the gateway Loki sink.
-- A successful push means Loki accepted the batch. It does not imply that a
-  particular request produced a log event.
-- Labels: `status`.
+- End-to-end gateway latency from request receipt until the final non-streaming
+  response is ready, a streaming response is fully iterated, or the request
+  terminates with an error/cancellation.
+- For streaming requests, this measures full stream duration, not TTFT.
+- Labels: `route`, `method`, `stream`, `model`, `status_family`, `result`.
 
-`gateway_proxy_loki_events_dropped_total`
+`gateway_request_ttft_seconds`
 
-- Number of log events dropped before they reached Loki.
-- Typical reasons are local queue pressure or delivery failures after retry
-  limits.
-- Labels: `reason`.
+- Time from gateway request start to the first non-empty streamed backend chunk.
+- Recorded for streamed responses when a first non-empty chunk is observed.
+- Labels: `route`, `method`, `stream`, `model`, `status_family`, `result`.
 
 `gateway_session_requests_total`
 
@@ -62,10 +50,25 @@ per-request timing and span-level investigation.
 - `session_present=false` means the request did not include `X-Session-ID`.
 - `session_first_request=true` means the runtime session tracker did not see
   this session id in Valkey DB 0 before this request.
-- This metric is about runtime session observation, not the persisted chat
-  history stored in Valkey DB 1.
 - Labels: `route`, `method`, `stream`, `session_present`,
   `session_first_request`.
+
+`gateway_session_request_e2e_seconds`
+
+- End-to-end latency for `/v1/chat/completions` requests with session
+  classification.
+- Recorded for ordinary and first-in-session chat completion requests. Use
+  `session_first_request=true` to isolate session-init behavior.
+- Labels: `route`, `method`, `stream`, `model`, `session_first_request`,
+  `status_family`, `result`.
+
+`gateway_session_request_ttft_seconds`
+
+- TTFT for streamed `/v1/chat/completions` requests with session classification.
+- Recorded when a non-empty streamed backend chunk is observed. Use
+  `session_first_request=true` to isolate session-init TTFT.
+- Labels: `route`, `method`, `stream`, `model`, `session_first_request`,
+  `status_family`, `result`.
 
 `gateway_active_sessions`
 
@@ -83,25 +86,18 @@ per-request timing and span-level investigation.
   do not by themselves mean the backend generation failed.
 - Labels: `operation`, `error_type`.
 
-`gateway_session_init_ttft_seconds`
+`gateway_loki_push_total`
 
-- Time from gateway request start to the first non-empty streamed backend chunk
-  for the first observed request in a session.
-- Recorded only for streaming `/v1/chat/completions` requests where
-  `session_first_request=true` and a non-empty chunk is observed.
-- This metric is intentionally absent for non-streaming requests because the
-  gateway cannot observe token-level TTFT without streaming.
-- Labels: `route`, `method`, `stream`, `model`, `status_family`, `result`.
+- Number of batch push attempts made by the gateway Loki publisher.
+- A successful push means Loki accepted the batch. It does not imply that a
+  particular request produced a log event.
+- Labels: `status`.
 
-`gateway_session_init_e2e_latency_seconds`
+`gateway_loki_events_dropped_total`
 
-- End-to-end latency for the first observed `/v1/chat/completions` request in a
-  session.
-- Recorded for both streaming and non-streaming requests when
-  `session_first_request=true`.
-- `result` is derived from gateway/backend outcome: success, error, or
-  cancelled.
-- Labels: `route`, `method`, `stream`, `model`, `status_family`, `result`.
+- Number of log events dropped before they reached Loki.
+- Typical reason: local queue pressure.
+- Labels: `reason`.
 
 The gateway intentionally does not use `session_id`, `request_id`, `trace_id`,
 or `span_id` as Prometheus labels.

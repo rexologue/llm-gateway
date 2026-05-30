@@ -38,7 +38,7 @@ class OpenAICompatibleBackend:
 
         forwarded = strip_hop_by_hop_headers(headers)
         forwarded["x-request-id"] = request_id
-        
+
         if session_id is not None:
             forwarded["x-session-id"] = session_id
 
@@ -103,4 +103,3 @@ class OpenAICompatibleBackend:
             content=content,
             params=params,
         )
-

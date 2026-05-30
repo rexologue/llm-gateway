@@ -7,10 +7,9 @@ from dataclasses import dataclass
 from typing import Any, Mapping
 
 from app.http_utils import SENSITIVE_KEYS, parse_json_maybe, sanitize_headers, utc_now_iso
+from app.route_paths import CHAT_COMPLETIONS_ROUTE
 from app.tools.loki import LokiEventPublisher
 from app.tracing import current_trace_context
-
-GENERATION_ROUTE = "/v1/chat/completions"
 
 
 @dataclass(slots=True)
@@ -252,14 +251,22 @@ class GatewayLokiLogger:
     def _request_bucket(route: str) -> str:
         """Return the logical Loki bucket for a request event."""
 
-        return "request_generation" if route == GENERATION_ROUTE else "request_non_generation"
+        return (
+            "request_generation"
+            if route == CHAT_COMPLETIONS_ROUTE
+            else "request_non_generation"
+        )
 
 
     @staticmethod
     def _response_bucket(route: str) -> str:
         """Return the logical Loki bucket for a response event."""
 
-        return "response_generation" if route == GENERATION_ROUTE else "response_non_generation"
+        return (
+            "response_generation"
+            if route == CHAT_COMPLETIONS_ROUTE
+            else "response_non_generation"
+        )
 
 
     @staticmethod
@@ -324,7 +331,7 @@ class GatewayLokiLogger:
         if not isinstance(payload, dict):
             return None
 
-        if route == GENERATION_ROUTE:
+        if route == CHAT_COMPLETIONS_ROUTE:
             return GatewayLokiLogger._strip_messages(
                 GatewayLokiLogger._sanitize_payload(payload)
             )
@@ -338,7 +345,7 @@ class GatewayLokiLogger:
 
         parsed_response = parse_json_maybe(response_text)
 
-        if route == GENERATION_ROUTE:
+        if route == CHAT_COMPLETIONS_ROUTE:
             if stream:
                 return {"response_json": GatewayLokiLogger._stream_response_json(response_text)}
 
@@ -363,7 +370,7 @@ class GatewayLokiLogger:
     def _assistant_text(route: str, stream: bool, response_text: str) -> str | None:
         """Return generated assistant text for generation response events."""
 
-        if route != GENERATION_ROUTE:
+        if route != CHAT_COMPLETIONS_ROUTE:
             return None
 
         parsed_response = parse_json_maybe(response_text)

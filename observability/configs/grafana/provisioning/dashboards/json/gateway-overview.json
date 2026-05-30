@@ -139,13 +139,13 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_session_init_ttft_seconds_bucket[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_session_request_ttft_seconds_bucket[$__rate_interval])))",
           "legendFormat": "p95",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Current Init TTFT p95",
+      "title": "Current TTFT p95",
       "type": "stat"
     },
     {
@@ -206,13 +206,13 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_session_init_e2e_latency_seconds_bucket[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_session_request_e2e_seconds_bucket[$__rate_interval])))",
           "legendFormat": "p95",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Current Init E2E p95",
+      "title": "Current E2E p95",
       "type": "stat"
     },
     {
@@ -267,7 +267,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "100 * sum(rate(gateway_session_requests_total{session_present=\"true\"}[$__rate_interval])) / clamp_min(sum(rate(gateway_proxy_requests_total[$__rate_interval])), 1e-9)",
+          "expr": "100 * sum(rate(gateway_session_requests_total{session_present=\"true\"}[$__rate_interval])) / clamp_min(sum(rate(gateway_requests_total[$__rate_interval])), 1e-9)",
           "legendFormat": "session share",
           "range": true,
           "refId": "A"
@@ -331,7 +331,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum(increase(gateway_proxy_requests_total[$__rate_interval]))",
+          "expr": "sum(increase(gateway_requests_total[$__rate_interval]))",
           "legendFormat": "all requests",
           "range": true,
           "refId": "A"
@@ -402,27 +402,27 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "histogram_quantile(0.50, sum by (le) (rate(gateway_session_init_ttft_seconds_bucket[$__rate_interval])))",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(gateway_session_request_ttft_seconds_bucket[$__rate_interval])))",
           "legendFormat": "p50",
           "range": true,
           "refId": "A"
         },
         {
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_session_init_ttft_seconds_bucket[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_session_request_ttft_seconds_bucket[$__rate_interval])))",
           "legendFormat": "p95",
           "range": true,
           "refId": "B"
         },
         {
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(gateway_session_init_ttft_seconds_bucket[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(gateway_session_request_ttft_seconds_bucket[$__rate_interval])))",
           "legendFormat": "p99",
           "range": true,
           "refId": "C"
         }
       ],
-      "title": "Init TTFT Quantiles",
+      "title": "TTFT Quantiles",
       "type": "timeseries"
     },
     {
@@ -480,27 +480,27 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "histogram_quantile(0.50, sum by (le) (rate(gateway_session_init_e2e_latency_seconds_bucket[$__rate_interval])))",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(gateway_session_request_e2e_seconds_bucket[$__rate_interval])))",
           "legendFormat": "p50",
           "range": true,
           "refId": "A"
         },
         {
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_session_init_e2e_latency_seconds_bucket[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_session_request_e2e_seconds_bucket[$__rate_interval])))",
           "legendFormat": "p95",
           "range": true,
           "refId": "B"
         },
         {
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(gateway_session_init_e2e_latency_seconds_bucket[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(gateway_session_request_e2e_seconds_bucket[$__rate_interval])))",
           "legendFormat": "p99",
           "range": true,
           "refId": "C"
         }
       ],
-      "title": "Init E2E Quantiles",
+      "title": "E2E Quantiles",
       "type": "timeseries"
     },
     {
@@ -566,14 +566,14 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum(rate(gateway_proxy_responses_total{result=\"error\"}[$__rate_interval]))",
-          "legendFormat": "proxy errors",
+          "expr": "sum(rate(gateway_responses_total{result=\"error\"}[$__rate_interval]))",
+          "legendFormat": "gateway errors",
           "range": true,
           "refId": "A"
         },
         {
           "editorMode": "code",
-          "expr": "sum(rate(gateway_proxy_responses_total{result=\"cancelled\"}[$__rate_interval]))",
+          "expr": "sum(rate(gateway_responses_total{result=\"cancelled\"}[$__rate_interval]))",
           "legendFormat": "cancelled",
           "range": true,
           "refId": "B"
@@ -587,7 +587,7 @@
         },
         {
           "editorMode": "code",
-          "expr": "sum(rate(gateway_proxy_loki_events_dropped_total[$__rate_interval]))",
+          "expr": "sum(rate(gateway_loki_events_dropped_total[$__rate_interval]))",
           "legendFormat": "loki dropped events",
           "range": true,
           "refId": "D"
@@ -651,7 +651,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le, route) (rate(gateway_proxy_request_latency_seconds_bucket[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le, route) (rate(gateway_request_e2e_seconds_bucket[$__rate_interval])))",
           "legendFormat": "{{route}} p95",
           "range": true,
           "refId": "A"

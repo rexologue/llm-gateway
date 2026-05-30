@@ -7,7 +7,7 @@ import logging
 from opentelemetry import trace
 from redis.exceptions import RedisError
 
-from app.observability import SESSION_TRACKER_ERRORS_COUNTER
+from app.metrics import GatewayMetrics
 from app.tools.valkey_store import ValkeyJsonStore
 
 logger = logging.getLogger(__name__)
@@ -23,9 +23,11 @@ class SessionTracker:
         prefix: str,
         ttl_sec: int,
         max_connections: int,
+        metrics: GatewayMetrics,
     ) -> None:
         """Initialize the Valkey-backed runtime session store."""
 
+        self.metrics = metrics
         self.store = ValkeyJsonStore(
             api_url=api_url,
             prefix=prefix,
@@ -79,10 +81,7 @@ class SessionTracker:
         """Record a Valkey failure in logs, metrics, and the current trace."""
 
         error_type = type(exc).__name__
-        SESSION_TRACKER_ERRORS_COUNTER.labels(
-            operation=operation,
-            error_type=error_type,
-        ).inc()
+        self.metrics.session_tracker_error(operation, exc)
         logger.warning("Session tracker %s failed: %s", operation, exc)
 
         span = trace.get_current_span()

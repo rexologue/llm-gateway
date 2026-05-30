@@ -22,19 +22,17 @@ from app.http_utils import (
 )
 from app.llm_payloads import model_label
 from app.loki_logging import LokiRequestContext
-from app.observability import (
-    ACTIVE_SESSION_GAUGE,
-    REQUEST_COUNTER,
-    REQUEST_LATENCY,
-    SESSION_INIT_TTFT,
-)
-from app.proxy_metrics import record_proxy_response
+from app.metrics import MetricsRequestContext
 from app.request_shaping import apply_chat_payload_overrides, apply_generic_payload_overrides
-from app.session_metrics import (
-    bool_label,
-    observe_session_e2e,
-    record_session_request,
-    session_metric_labels,
+from app.route_paths import (
+    CHAT_COMPLETIONS_ROUTE,
+    GATEWAY_METRICS_ROUTE,
+    GATEWAY_SESSION_DETAIL_ROUTE,
+    GATEWAY_SESSION_LIST_ROUTE,
+    GENERIC_V1_PROXY_ROUTE,
+    HEALTH_ROUTE,
+    ROOT_ROUTE,
+    V1_ROUTE_PREFIX,
 )
 from app.span_utils import mark_error_if_needed, request_span_attributes, set_span_attributes
 from app.state import AppState
@@ -54,7 +52,7 @@ def create_router() -> APIRouter:
     router = APIRouter()
 
 
-    @router.get("/health")
+    @router.get(HEALTH_ROUTE)
     async def health(request: Request) -> Response:
         """Return the backend health endpoint response."""
 
@@ -63,7 +61,7 @@ def create_router() -> APIRouter:
         try:
             backend_response = await state.backend.request(
                 method="GET",
-                route="/health",
+                route=HEALTH_ROUTE,
                 headers={},
                 content=b"",
             )
@@ -84,7 +82,7 @@ def create_router() -> APIRouter:
         )
 
 
-    @router.get("/gateway/metrics")
+    @router.get(GATEWAY_METRICS_ROUTE)
     async def gateway_metrics(request: Request) -> Response:
         """Expose Prometheus metrics collected by the gateway process."""
 
@@ -92,12 +90,12 @@ def create_router() -> APIRouter:
         active_session_count = await state.session_tracker.active_session_count()
 
         if active_session_count is not None:
-            ACTIVE_SESSION_GAUGE.set(active_session_count)
+            state.metrics.set_active_sessions(active_session_count)
 
         return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
-    @router.get("/gateway/session_list")
+    @router.get(GATEWAY_SESSION_LIST_ROUTE)
     async def session_list(request: Request) -> JSONResponse:
         """Return ids for all persisted chat sessions."""
 
@@ -113,7 +111,7 @@ def create_router() -> APIRouter:
         return JSONResponse(session_ids)
 
 
-    @router.get("/gateway/session/{session_id}")
+    @router.get(GATEWAY_SESSION_DETAIL_ROUTE)
     async def session_get(session_id: str, request: Request) -> JSONResponse:
         """Return one persisted chat session by external session id."""
 
@@ -132,13 +130,13 @@ def create_router() -> APIRouter:
         return JSONResponse(session)
 
 
-    @router.api_route("/v1/chat/completions", methods=["POST"])
+    @router.api_route(CHAT_COMPLETIONS_ROUTE, methods=["POST"])
     async def chat_completions(request: Request) -> Response:
         """Proxy chat completions with session tracking, metrics, logs, and tracing."""
 
         state = _get_state(request.app)
         settings = state.settings
-        route = "/v1/chat/completions"
+        route = CHAT_COMPLETIONS_ROUTE
         method = "POST"
         started_at = time.perf_counter()
 
@@ -169,6 +167,15 @@ def create_router() -> APIRouter:
         # request handling and returns its own 400 response without touching
         # the LLM backend.
         if not isinstance(payload, dict):
+            metrics_context = state.metrics.context(
+                route=route,
+                method=method,
+                stream=False,
+                model="unknown",
+                session_id=session_id,
+                session_first_request=session_first_request,
+            )
+
             return await _handle_invalid_chat_payload(
                 route=route,
                 method=method,
@@ -178,6 +185,7 @@ def create_router() -> APIRouter:
                 session_id=session_id,
                 session_first_request=session_first_request,
                 log_context=log_context,
+                metrics_context=metrics_context,
             )
 
         # Branch: valid chat JSON with configured gateway-side request shaping.
@@ -204,15 +212,15 @@ def create_router() -> APIRouter:
         log_context.payload = payload
 
         await log_context.request()
-
-        record_session_request(
+        metrics_context = state.metrics.context(
             route=route,
             method=method,
             stream=stream,
+            model=model,
             session_id=session_id,
             session_first_request=session_first_request,
         )
-        REQUEST_COUNTER.labels(route=route, method=method, stream=bool_label(stream)).inc()
+        metrics_context.request()
 
         backend_headers = state.backend.forwarded_headers(
             headers_in,
@@ -240,6 +248,7 @@ def create_router() -> APIRouter:
                 backend_headers=backend_headers,
                 backend_url=backend_url,
                 log_context=log_context,
+                metrics_context=metrics_context,
             )
 
         # Branch: non-streaming chat completion. We reach this branch after the
@@ -260,11 +269,12 @@ def create_router() -> APIRouter:
             backend_headers=backend_headers,
             backend_url=backend_url,
             log_context=log_context,
+            metrics_context=metrics_context,
         )
 
 
     @router.api_route(
-        "/v1/{full_path:path}",
+        GENERIC_V1_PROXY_ROUTE,
         methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     )
     async def generic_v1_proxy(full_path: str, request: Request) -> Response:
@@ -272,7 +282,7 @@ def create_router() -> APIRouter:
 
         state = _get_state(request.app)
         settings = state.settings
-        route = f"/v1/{full_path}"
+        route = f"{V1_ROUTE_PREFIX}/{full_path}"
         method = request.method.upper()
         started_at = time.perf_counter()
         raw_body = await request.body()
@@ -306,6 +316,14 @@ def create_router() -> APIRouter:
             payload=payload,
         )
         await log_context.request()
+        metrics_context = state.metrics.context(
+            route=route,
+            method=method,
+            stream=False,
+            session_id=session_id,
+            session_first_request=session_first_request,
+        )
+        metrics_context.request()
 
         try:
             backend_response = await state.backend.request(
@@ -318,30 +336,20 @@ def create_router() -> APIRouter:
         except asyncio.CancelledError as exc:
             duration_sec = time.perf_counter() - started_at
             await log_context.error(exc, e2e_sec=duration_sec)
-            REQUEST_LATENCY.labels(route=route, method=method, stream="false").observe(
-                duration_sec
-            )
-            record_proxy_response(
-                route=route,
-                method=method,
-                stream=False,
+            metrics_context.response(
                 status_code=None,
                 cancelled=True,
+                e2e_sec=duration_sec,
             )
             raise
 
         except Exception as exc:
             duration_sec = time.perf_counter() - started_at
             await log_context.error(exc, e2e_sec=duration_sec)
-            REQUEST_LATENCY.labels(route=route, method=method, stream="false").observe(
-                duration_sec
-            )
-            record_proxy_response(
-                route=route,
-                method=method,
-                stream=False,
+            metrics_context.response(
                 status_code=None,
                 cancelled=False,
+                e2e_sec=duration_sec,
             )
             raise
 
@@ -360,16 +368,10 @@ def create_router() -> APIRouter:
             e2e_sec=duration_sec,
         )
 
-        REQUEST_COUNTER.labels(route=route, method=method, stream="false").inc()
-        REQUEST_LATENCY.labels(route=route, method=method, stream="false").observe(
-            duration_sec
-        )
-        record_proxy_response(
-            route=route,
-            method=method,
-            stream=False,
+        metrics_context.response(
             status_code=backend_response.status_code,
             cancelled=False,
+            e2e_sec=duration_sec,
         )
 
         return Response(
@@ -380,7 +382,7 @@ def create_router() -> APIRouter:
         )
 
 
-    @router.get("/")
+    @router.get(ROOT_ROUTE)
     async def root() -> PlainTextResponse:
         """Return a tiny human-readable status page for manual checks."""
 
@@ -400,6 +402,7 @@ async def _handle_invalid_chat_payload(
     session_id: str | None,
     session_first_request: bool,
     log_context: LokiRequestContext,
+    metrics_context: MetricsRequestContext,
 ) -> Response:
     """Return and log the gateway-managed response for malformed chat payloads."""
 
@@ -414,15 +417,7 @@ async def _handle_invalid_chat_payload(
         session_id=session_id,
     )
 
-    record_session_request(
-        route=route,
-        method=method,
-        stream=stream,
-        session_id=session_id,
-        session_first_request=session_first_request,
-    )
-    REQUEST_COUNTER.labels(route=route, method=method, stream="false").inc()
-
+    metrics_context.request()
     await log_context.request()
 
     # Branch: gateway-owned malformed-payload response. We enter this helper
@@ -441,7 +436,6 @@ async def _handle_invalid_chat_payload(
             raw_body=raw_body,
         ),
     ) as span:
-        
         duration_sec = time.perf_counter() - started_at
         set_span_attributes(
             span,
@@ -460,25 +454,10 @@ async def _handle_invalid_chat_payload(
             response_text=response_text,
             e2e_sec=duration_sec,
         )
-        REQUEST_LATENCY.labels(route=route, method=method, stream="false").observe(
-            duration_sec
-        )
-        observe_session_e2e(
-            session_first_request=session_first_request,
-            route=route,
-            method=method,
-            stream=stream,
-            model=model,
+        metrics_context.response(
             status_code=status_code,
             cancelled=False,
-            duration_sec=duration_sec,
-        )
-        record_proxy_response(
-            route=route,
-            method=method,
-            stream=stream,
-            status_code=status_code,
-            cancelled=False,
+            e2e_sec=duration_sec,
         )
 
     return Response(
@@ -504,6 +483,7 @@ async def _handle_stream_chat_completion(
     backend_headers: Mapping[str, str],
     backend_url: str,
     log_context: LokiRequestContext,
+    metrics_context: MetricsRequestContext,
 ) -> Response:
     """Proxy one streaming chat completion request."""
 
@@ -554,7 +534,7 @@ async def _handle_stream_chat_completion(
     # ``cancelled=True`` in metrics.
     except asyncio.CancelledError as exc:
         duration_sec = time.perf_counter() - started_at
-        
+
         request_span.record_exception(exc)
         request_span.set_status(Status(StatusCode.ERROR))
         set_span_attributes(
@@ -565,28 +545,11 @@ async def _handle_stream_chat_completion(
                 "llm.cancelled": True,
             },
         )
-        REQUEST_LATENCY.labels(route=route, method=method, stream="true").observe(
-            duration_sec
-        )
-
         await log_context.error(exc, e2e_sec=duration_sec)
-
-        observe_session_e2e(
-            session_first_request=session_first_request,
-            route=route,
-            method=method,
-            stream=True,
-            model=model,
+        metrics_context.response(
             status_code=None,
             cancelled=True,
-            duration_sec=duration_sec,
-        )
-        record_proxy_response(
-            route=route,
-            method=method,
-            stream=True,
-            status_code=None,
-            cancelled=True,
+            e2e_sec=duration_sec,
         )
 
         request_span.end()
@@ -607,28 +570,11 @@ async def _handle_stream_chat_completion(
                 "llm.response.body_bytes": 0,
             },
         )
-        REQUEST_LATENCY.labels(route=route, method=method, stream="true").observe(
-            duration_sec
-        )
-
         await log_context.error(exc, e2e_sec=duration_sec)
-
-        observe_session_e2e(
-            session_first_request=session_first_request,
-            route=route,
-            method=method,
-            stream=True,
-            model=model,
+        metrics_context.response(
             status_code=None,
             cancelled=False,
-            duration_sec=duration_sec,
-        )
-        record_proxy_response(
-            route=route,
-            method=method,
-            stream=True,
-            status_code=None,
-            cancelled=False,
+            e2e_sec=duration_sec,
         )
 
         request_span.end()
@@ -676,17 +622,11 @@ async def _handle_stream_chat_completion(
                                     {"llm.ttft_sec": ttft_sec},
                                 )
 
-                                if session_first_request:
-                                    SESSION_INIT_TTFT.labels(
-                                        **session_metric_labels(
-                                            route=route,
-                                            method=method,
-                                            stream=True,
-                                            model=model,
-                                            status_code=status_code,
-                                            cancelled=False,
-                                        )
-                                    ).observe(ttft_sec)
+                                metrics_context.ttft(
+                                    status_code=status_code,
+                                    cancelled=False,
+                                    ttft_sec=ttft_sec,
+                                )
 
                         raw_chunks.append(chunk)
                         yield chunk
@@ -766,28 +706,10 @@ async def _handle_stream_chat_completion(
                         else:
                             await log_context.error(stream_error, e2e_sec=duration_sec)
 
-                        REQUEST_LATENCY.labels(
-                            route=route,
-                            method=method,
-                            stream="true",
-                        ).observe(duration_sec)
-                        
-                        observe_session_e2e(
-                            session_first_request=session_first_request,
-                            route=route,
-                            method=method,
-                            stream=True,
-                            model=model,
+                        metrics_context.response(
                             status_code=metric_status_code,
                             cancelled=cancelled,
-                            duration_sec=duration_sec,
-                        )
-                        record_proxy_response(
-                            route=route,
-                            method=method,
-                            stream=True,
-                            status_code=metric_status_code,
-                            cancelled=cancelled,
+                            e2e_sec=duration_sec,
                         )
 
                     finally:
@@ -821,6 +743,7 @@ async def _handle_non_stream_chat_completion(
     backend_headers: Mapping[str, str],
     backend_url: str,
     log_context: LokiRequestContext,
+    metrics_context: MetricsRequestContext,
 ) -> Response:
     """Proxy one non-streaming chat completion request."""
 
@@ -890,25 +813,10 @@ async def _handle_non_stream_chat_completion(
                 e2e_sec=duration_sec,
             )
 
-            REQUEST_LATENCY.labels(route=route, method=method, stream="false").observe(
-                duration_sec
-            )
-            observe_session_e2e(
-                session_first_request=session_first_request,
-                route=route,
-                method=method,
-                stream=False,
-                model=model,
+            metrics_context.response(
                 status_code=status_code,
                 cancelled=False,
-                duration_sec=duration_sec,
-            )
-            record_proxy_response(
-                route=route,
-                method=method,
-                stream=False,
-                status_code=status_code,
-                cancelled=False,
+                e2e_sec=duration_sec,
             )
 
             return Response(
@@ -933,26 +841,11 @@ async def _handle_non_stream_chat_completion(
                     "llm.cancelled": True,
                 },
             )
-            REQUEST_LATENCY.labels(route=route, method=method, stream="false").observe(
-                duration_sec
-            )
             await log_context.error(exc, e2e_sec=duration_sec)
-            observe_session_e2e(
-                session_first_request=session_first_request,
-                route=route,
-                method=method,
-                stream=False,
-                model=model,
+            metrics_context.response(
                 status_code=None,
                 cancelled=True,
-                duration_sec=duration_sec,
-            )
-            record_proxy_response(
-                route=route,
-                method=method,
-                stream=False,
-                status_code=None,
-                cancelled=True,
+                e2e_sec=duration_sec,
             )
             raise
 
@@ -970,25 +863,10 @@ async def _handle_non_stream_chat_completion(
                     "llm.duration_sec": duration_sec,
                 },
             )
-            REQUEST_LATENCY.labels(route=route, method=method, stream="false").observe(
-                duration_sec
-            )
             await log_context.error(exc, e2e_sec=duration_sec)
-            observe_session_e2e(
-                session_first_request=session_first_request,
-                route=route,
-                method=method,
-                stream=False,
-                model=model,
+            metrics_context.response(
                 status_code=None,
                 cancelled=False,
-                duration_sec=duration_sec,
-            )
-            record_proxy_response(
-                route=route,
-                method=method,
-                stream=False,
-                status_code=None,
-                cancelled=False,
+                e2e_sec=duration_sec,
             )
             raise
