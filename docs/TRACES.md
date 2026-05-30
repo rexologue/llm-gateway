@@ -35,7 +35,8 @@ The collector then exports to Tempo at `tempo:4317` inside the
 
 When tracing is enabled, FastAPI instrumentation creates standard HTTP server
 spans for non-excluded routes. The gateway also creates domain spans for
-`POST /v1/chat/completions`.
+gateway request handling, session handling, backend calls, streaming, and
+Valkey operations.
 
 `llm.gateway.request`
 
@@ -55,12 +56,30 @@ spans for non-excluded routes. The gateway also creates domain spans for
 - Use this span to separate backend connection/response-start latency from
   downstream streaming duration.
 
+`llm.session.flow`
+
+- Represents gateway-side session handling for one chat completion request.
+- Covers runtime first-request detection and persisted dialog update under one
+  parent span.
+- Child `valkey.operation` spans show the concrete Valkey commands used by the
+  session tracker and session store.
+
 `llm.stream_response`
 
 - Exists only for streaming chat completion requests.
 - Measures gateway iteration over backend stream chunks.
 - Records TTFT when the first non-empty chunk arrives.
 - Ends after the stream is fully consumed, fails, or is cancelled.
+
+`valkey.operation`
+
+- Represents one Valkey operation issued by the gateway session layer.
+- Covers runtime session tracking, persisted session storage, session
+  inspection endpoints, and active-session counting for metrics scrapes.
+- The raw `tools/valkey_store.py` helper does not create spans by itself;
+  tracing stays in the gateway/session layer that owns the operation context.
+- Operation names currently include `get`, `set`, `set_if_absent`, `touch`,
+  `scan_count`, `scan_keys`, and `close`.
 
 ## Important Attributes
 
@@ -72,6 +91,7 @@ The gateway sets stable domain attributes on its custom spans:
 | `session.present` | Whether the request included `X-Session-ID` |
 | `session.id` | Session id, present only when the client supplied one |
 | `session.first_request` | Whether Valkey DB 0 marked this as the first observed request for the session |
+| `session.messages_saved` | Whether the chat messages block was persisted for this request |
 | `http.route` | Logical gateway route, for example `/v1/chat/completions` |
 | `http.method` | HTTP method |
 | `http.url` | Backend URL on `llm.backend.request` spans |
@@ -87,6 +107,17 @@ The gateway sets stable domain attributes on its custom spans:
 | `llm.ttft_sec` | Time from gateway request receipt to the first non-empty streamed chunk |
 | `llm.chunk_count` | Number of non-empty chunks observed in a stream |
 | `llm.cancelled` | Whether the request or stream was cancelled |
+| `db.system` | Data store system, always `valkey` on `valkey.operation` spans |
+| `valkey.operation` | Valkey operation contract name |
+| `valkey.key_prefix` | Store key prefix, used to distinguish runtime and persisted session stores |
+| `valkey.record_present` | Whether the operation was bound to a single logical record id |
+| `valkey.pattern` | Scan pattern when the operation scans keys |
+| `valkey.scan_count` | SCAN count hint when applicable |
+| `valkey.found` | Whether a read-like operation found a matching record |
+| `valkey.created` | Whether `set_if_absent` created a new key |
+| `valkey.updated` | Whether a write/touch/persist operation updated a key |
+| `valkey.deleted` | Whether a delete operation removed a key |
+| `valkey.result_count` | Count returned or yielded by count/scan operations |
 
 The gateway does not attach request or response message bodies to spans. Payload
 details belong to Loki event buckets, where request messages are intentionally
@@ -128,11 +159,13 @@ For a slow first token in a streaming request:
 
 1. Open the trace in Grafana Tempo.
 2. Find `llm.gateway.request` and check `llm.duration_sec`.
-3. Find `llm.backend.request` and check whether the backend was slow to respond
+3. Find `llm.session.flow` and its child `valkey.operation` spans if session
+   handling looks slow.
+4. Find `llm.backend.request` and check whether the backend was slow to respond
    with headers.
-4. Find `llm.stream_response` and check `llm.ttft_sec` and
+5. Find `llm.stream_response` and check `llm.ttft_sec` and
    `llm.chunk_count`.
-5. Use the same `trace_id` in Loki to inspect sanitized request/response events.
+6. Use the same `trace_id` in Loki to inspect sanitized request/response events.
 
 For a failed request:
 
@@ -145,9 +178,12 @@ For a failed request:
 
 ## Limitations
 
-- Custom LLM spans are currently emitted for `/v1/chat/completions`.
+- Custom gateway/session/LLM spans are currently emitted for
+  `/v1/chat/completions`.
 - Other `/v1/*` routes are still covered by FastAPI instrumentation when they
   are not excluded by `GATEWAY_OTEL_FASTAPI_EXCLUDED_URLS`.
+- Valkey spans are emitted by session tracker/store wrappers, including
+  gateway session inspection endpoints and active-session counting.
 - TTFT is observable only for streaming chat completions.
 - Sampling can drop traces before export; set `GATEWAY_OTEL_SAMPLE_RATIO=1.0`
   while debugging a specific request.

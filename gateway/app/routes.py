@@ -10,7 +10,6 @@ import httpx
 from fastapi import APIRouter, FastAPI, Request, Response
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from opentelemetry import trace
-from opentelemetry.trace import Status, StatusCode
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from redis.exceptions import RedisError
 
@@ -31,8 +30,26 @@ from app.route_paths import (
     ROOT_ROUTE,
     V1_ROUTE_PREFIX,
 )
-from app.span_utils import mark_error_if_needed, request_span_attributes, set_span_attributes
 from app.state import AppState
+from app.tracing import (
+    SPAN_BACKEND_REQUEST,
+    SPAN_GATEWAY_REQUEST,
+    SPAN_SESSION_FLOW,
+    SPAN_STREAM_RESPONSE,
+    TRACER_NAME,
+    backend_request_span_attrs,
+    backend_response_span_attrs,
+    gateway_request_span_attrs,
+    gateway_response_span_attrs,
+    http_status_span_attrs,
+    mark_error_if_needed,
+    record_span_exception,
+    session_flow_result_span_attrs,
+    session_flow_span_attrs,
+    set_span_attributes,
+    stream_response_span_attrs,
+    stream_ttft_span_attrs,
+)
 from app.utils import (
     apply_chat_payload_overrides,
     apply_generic_payload_overrides,
@@ -40,7 +57,7 @@ from app.utils import (
     model_label,
 )
 
-tracer = trace.get_tracer("llm-gateway")
+tracer = trace.get_tracer(TRACER_NAME)
 
 
 def _get_state(app: FastAPI) -> AppState:
@@ -148,9 +165,46 @@ def create_router() -> APIRouter:
         headers_in = {key: value for key, value in request.headers.items()}
         request_id = request_id_from_headers(headers_in)
         session_id = session_id_from_headers(headers_in)
-        session_first_request = await state.session_tracker.mark_seen(session_id)
-
         payload = parse_json_maybe(decoded_body)
+        session_first_request = False
+        messages_saved = False
+
+        with tracer.start_as_current_span(
+            SPAN_SESSION_FLOW,
+            attributes=session_flow_span_attrs(
+                route=route,
+                method=method,
+                session_id=session_id,
+            ),
+        ) as session_span:
+            session_first_request = await state.session_tracker.mark_seen(session_id)
+
+            # Branch: valid chat JSON may update persisted dialog state. We do
+            # this under the session span so first-request detection and dialog
+            # persistence are visible as one gateway session flow.
+            if isinstance(payload, dict):
+                if (
+                    settings.forced_max_completion_tokens is not None
+                    or settings.forced_thinking_disabled
+                ):
+                    payload, raw_body, _decoded_body = apply_chat_payload_overrides(
+                        payload,
+                        forced_max_completion_tokens=settings.forced_max_completion_tokens,
+                        forced_thinking_disabled=settings.forced_thinking_disabled,
+                    )
+
+                messages_saved = await state.session_store.save_messages(
+                    session_id,
+                    payload.get("messages"),
+                )
+
+            set_span_attributes(
+                session_span,
+                session_flow_result_span_attrs(
+                    session_first_request=session_first_request,
+                    messages_saved=messages_saved,
+                ),
+            )
 
         log_context = state.loki.context(
             route=route,
@@ -190,22 +244,6 @@ def create_router() -> APIRouter:
                 log_context=log_context,
                 metrics_context=metrics_context,
             )
-
-        # Branch: valid chat JSON with configured gateway-side request shaping.
-        # We get here only for a parsed JSON object, and only when deployment
-        # settings require deterministic overrides before the payload is stored,
-        # logged, and sent to the backend.
-        if (
-            settings.forced_max_completion_tokens is not None
-            or settings.forced_thinking_disabled
-        ):
-            payload, raw_body, _decoded_body = apply_chat_payload_overrides(
-                payload,
-                forced_max_completion_tokens=settings.forced_max_completion_tokens,
-                forced_thinking_disabled=settings.forced_thinking_disabled,
-            )
-
-        await state.session_store.save_messages(session_id, payload.get("messages"))
 
         stream = bool(payload.get("stream"))
         model = model_label(payload)
@@ -427,8 +465,8 @@ async def _handle_invalid_chat_payload(
     # only after chat payload parsing failed in the route, so this span and
     # response represent gateway validation rather than an LLM backend call.
     with tracer.start_as_current_span(
-        "llm.gateway.request",
-        attributes=request_span_attributes(
+        SPAN_GATEWAY_REQUEST,
+        attributes=gateway_request_span_attrs(
             request_id=request_id,
             session_id=session_id,
             session_first_request=session_first_request,
@@ -442,13 +480,13 @@ async def _handle_invalid_chat_payload(
         duration_sec = time.perf_counter() - started_at
         set_span_attributes(
             span,
-            {
-                "http.status_code": status_code,
-                "llm.response.body_bytes": len(response_body),
-                "llm.duration_sec": duration_sec,
-            },
+            gateway_response_span_attrs(
+                status_code=status_code,
+                response_body_bytes=len(response_body),
+                duration_sec=duration_sec,
+            ),
         )
-        span.set_status(Status(StatusCode.ERROR))
+        mark_error_if_needed(span, status_code)
 
         await log_context.response(
             status_code=status_code,
@@ -491,8 +529,8 @@ async def _handle_stream_chat_completion(
     """Proxy one streaming chat completion request."""
 
     request_span = tracer.start_span(
-        "llm.gateway.request",
-        attributes=request_span_attributes(
+        SPAN_GATEWAY_REQUEST,
+        attributes=gateway_request_span_attrs(
             request_id=request_id,
             session_id=session_id,
             session_first_request=session_first_request,
@@ -513,21 +551,21 @@ async def _handle_stream_chat_completion(
                 content=raw_body,
             )
 
-            with tracer.start_as_current_span("llm.backend.request") as backend_span:
+            with tracer.start_as_current_span(SPAN_BACKEND_REQUEST) as backend_span:
                 set_span_attributes(
                     backend_span,
-                    {
-                        "http.method": method,
-                        "http.url": backend_url,
-                        "http.route": route,
-                        "llm.model": model,
-                        "llm.request.body_bytes": len(raw_body),
-                    },
+                    backend_request_span_attrs(
+                        method=method,
+                        url=backend_url,
+                        route=route,
+                        model=model,
+                        request_body_bytes=len(raw_body),
+                    ),
                 )
                 backend_response = await state.backend.send(backend_request, stream=True)
                 set_span_attributes(
                     backend_span,
-                    {"http.status_code": backend_response.status_code},
+                    backend_response_span_attrs(backend_response.status_code),
                 )
                 mark_error_if_needed(backend_span, backend_response.status_code)
 
@@ -538,15 +576,15 @@ async def _handle_stream_chat_completion(
     except asyncio.CancelledError as exc:
         duration_sec = time.perf_counter() - started_at
 
-        request_span.record_exception(exc)
-        request_span.set_status(Status(StatusCode.ERROR))
+        record_span_exception(request_span, exc)
         set_span_attributes(
             request_span,
-            {
-                "llm.duration_sec": duration_sec,
-                "llm.response.body_bytes": 0,
-                "llm.cancelled": True,
-            },
+            gateway_response_span_attrs(
+                status_code=None,
+                response_body_bytes=0,
+                duration_sec=duration_sec,
+                cancelled=True,
+            ),
         )
         await log_context.error(exc, e2e_sec=duration_sec)
         metrics_context.response(
@@ -564,14 +602,14 @@ async def _handle_stream_chat_completion(
     except Exception as exc:
         duration_sec = time.perf_counter() - started_at
 
-        request_span.record_exception(exc)
-        request_span.set_status(Status(StatusCode.ERROR))
+        record_span_exception(request_span, exc)
         set_span_attributes(
             request_span,
-            {
-                "llm.duration_sec": duration_sec,
-                "llm.response.body_bytes": 0,
-            },
+            gateway_response_span_attrs(
+                status_code=None,
+                response_body_bytes=0,
+                duration_sec=duration_sec,
+            ),
         )
         await log_context.error(exc, e2e_sec=duration_sec)
         metrics_context.response(
@@ -592,7 +630,7 @@ async def _handle_stream_chat_completion(
     )
     raw_chunks: list[bytes] = []
 
-    set_span_attributes(request_span, {"http.status_code": status_code})
+    set_span_attributes(request_span, http_status_span_attrs(status_code))
     mark_error_if_needed(request_span, status_code)
 
     async def iterator() -> AsyncIterator[bytes]:
@@ -605,7 +643,7 @@ async def _handle_stream_chat_completion(
         stream_error: BaseException | None = None
 
         with trace.use_span(request_span, end_on_exit=False):
-            stream_span = tracer.start_span("llm.stream_response")
+            stream_span = tracer.start_span(SPAN_STREAM_RESPONSE)
 
             with trace.use_span(stream_span, end_on_exit=False):
                 try:
@@ -622,7 +660,7 @@ async def _handle_stream_chat_completion(
                                 ttft_sec = time.perf_counter() - started_at
                                 set_span_attributes(
                                     stream_span,
-                                    {"llm.ttft_sec": ttft_sec},
+                                    stream_ttft_span_attrs(ttft_sec),
                                 )
 
                                 metrics_context.ttft(
@@ -641,10 +679,8 @@ async def _handle_stream_chat_completion(
                 except asyncio.CancelledError as exc:
                     cancelled = True
                     stream_error = exc
-                    stream_span.record_exception(exc)
-                    stream_span.set_status(Status(StatusCode.ERROR))
-                    request_span.record_exception(exc)
-                    request_span.set_status(Status(StatusCode.ERROR))
+                    record_span_exception(stream_span, exc)
+                    record_span_exception(request_span, exc)
                     raise
 
                 # Branch: backend stream iteration failed mid-response. This
@@ -653,10 +689,8 @@ async def _handle_stream_chat_completion(
                 # terminal Loki event instead of a successful response event.
                 except Exception as exc:
                     stream_error = exc
-                    stream_span.record_exception(exc)
-                    stream_span.set_status(Status(StatusCode.ERROR))
-                    request_span.record_exception(exc)
-                    request_span.set_status(Status(StatusCode.ERROR))
+                    record_span_exception(stream_span, exc)
+                    record_span_exception(request_span, exc)
                     raise
 
                 finally:
@@ -666,20 +700,21 @@ async def _handle_stream_chat_completion(
                     body_text = response_bytes.decode("utf-8", errors="replace")
                     set_span_attributes(
                         stream_span,
-                        {
-                            "llm.chunk_count": chunk_count,
-                            "llm.response.body_bytes": response_bytes_count,
-                            "llm.stream_duration_sec": duration_sec,
-                            "llm.cancelled": cancelled,
-                        },
+                        stream_response_span_attrs(
+                            chunk_count=chunk_count,
+                            response_body_bytes=response_bytes_count,
+                            duration_sec=duration_sec,
+                            cancelled=cancelled,
+                        ),
                     )
                     set_span_attributes(
                         request_span,
-                        {
-                            "llm.response.body_bytes": response_bytes_count,
-                            "llm.duration_sec": duration_sec,
-                            "llm.cancelled": cancelled,
-                        },
+                        gateway_response_span_attrs(
+                            status_code=status_code,
+                            response_body_bytes=response_bytes_count,
+                            duration_sec=duration_sec,
+                            cancelled=cancelled,
+                        ),
                     )
                     mark_error_if_needed(stream_span, status_code, cancelled=cancelled)
                     mark_error_if_needed(request_span, status_code, cancelled=cancelled)
@@ -751,8 +786,8 @@ async def _handle_non_stream_chat_completion(
     """Proxy one non-streaming chat completion request."""
 
     with tracer.start_as_current_span(
-        "llm.gateway.request",
-        attributes=request_span_attributes(
+        SPAN_GATEWAY_REQUEST,
+        attributes=gateway_request_span_attrs(
             request_id=request_id,
             session_id=session_id,
             session_first_request=session_first_request,
@@ -764,16 +799,16 @@ async def _handle_non_stream_chat_completion(
         ),
     ) as span:
         try:
-            with tracer.start_as_current_span("llm.backend.request") as backend_span:
+            with tracer.start_as_current_span(SPAN_BACKEND_REQUEST) as backend_span:
                 set_span_attributes(
                     backend_span,
-                    {
-                        "http.method": method,
-                        "http.url": backend_url,
-                        "http.route": route,
-                        "llm.model": model,
-                        "llm.request.body_bytes": len(raw_body),
-                    },
+                    backend_request_span_attrs(
+                        method=method,
+                        url=backend_url,
+                        route=route,
+                        model=model,
+                        request_body_bytes=len(raw_body),
+                    ),
                 )
                 backend_response = await state.backend.post(
                     route=route,
@@ -782,7 +817,7 @@ async def _handle_non_stream_chat_completion(
                 )
                 set_span_attributes(
                     backend_span,
-                    {"http.status_code": backend_response.status_code},
+                    backend_response_span_attrs(backend_response.status_code),
                 )
                 mark_error_if_needed(backend_span, backend_response.status_code)
 
@@ -800,11 +835,11 @@ async def _handle_non_stream_chat_completion(
 
             set_span_attributes(
                 span,
-                {
-                    "http.status_code": status_code,
-                    "llm.response.body_bytes": len(backend_response.content),
-                    "llm.duration_sec": duration_sec,
-                },
+                gateway_response_span_attrs(
+                    status_code=status_code,
+                    response_body_bytes=len(backend_response.content),
+                    duration_sec=duration_sec,
+                ),
             )
             mark_error_if_needed(span, status_code)
 
@@ -834,15 +869,15 @@ async def _handle_non_stream_chat_completion(
         # backend response exists, so the terminal Loki event is a gateway error.
         except asyncio.CancelledError as exc:
             duration_sec = time.perf_counter() - started_at
-            span.record_exception(exc)
-            span.set_status(Status(StatusCode.ERROR))
+            record_span_exception(span, exc)
             set_span_attributes(
                 span,
-                {
-                    "llm.response.body_bytes": 0,
-                    "llm.duration_sec": duration_sec,
-                    "llm.cancelled": True,
-                },
+                gateway_response_span_attrs(
+                    status_code=None,
+                    response_body_bytes=0,
+                    duration_sec=duration_sec,
+                    cancelled=True,
+                ),
             )
             await log_context.error(exc, e2e_sec=duration_sec)
             metrics_context.response(
@@ -857,14 +892,14 @@ async def _handle_non_stream_chat_completion(
         # gateway error rather than as a response event.
         except Exception as exc:
             duration_sec = time.perf_counter() - started_at
-            span.record_exception(exc)
-            span.set_status(Status(StatusCode.ERROR))
+            record_span_exception(span, exc)
             set_span_attributes(
                 span,
-                {
-                    "llm.response.body_bytes": 0,
-                    "llm.duration_sec": duration_sec,
-                },
+                gateway_response_span_attrs(
+                    status_code=None,
+                    response_body_bytes=0,
+                    duration_sec=duration_sec,
+                ),
             )
             await log_context.error(exc, e2e_sec=duration_sec)
             metrics_context.response(

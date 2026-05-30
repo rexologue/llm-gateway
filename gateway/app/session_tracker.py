@@ -9,8 +9,17 @@ from redis.exceptions import RedisError
 
 from app.metrics import GatewayMetrics
 from app.tools.valkey_store import ValkeyJsonStore
+from app.tracing import (
+    SPAN_VALKEY_OPERATION,
+    TRACER_NAME,
+    add_current_span_error_event,
+    set_span_attributes,
+    valkey_operation_span_attrs,
+    valkey_result_span_attrs,
+)
 
 logger = logging.getLogger(__name__)
+tracer = trace.get_tracer(TRACER_NAME)
 
 
 class SessionTracker:
@@ -39,7 +48,14 @@ class SessionTracker:
     async def close(self) -> None:
         """Close the underlying Valkey client."""
 
-        await self.store.close()
+        with tracer.start_as_current_span(
+            SPAN_VALKEY_OPERATION,
+            attributes=valkey_operation_span_attrs(
+                operation="close",
+                prefix=self.store.prefix,
+            ),
+        ):
+            await self.store.close()
 
 
     async def mark_seen(self, session_id: str | None) -> bool:
@@ -54,11 +70,31 @@ class SessionTracker:
             return False
 
         try:
-            created = await self.store.set_if_absent(session_id, True)
+            with tracer.start_as_current_span(
+                SPAN_VALKEY_OPERATION,
+                attributes=valkey_operation_span_attrs(
+                    operation="set_if_absent",
+                    prefix=self.store.prefix,
+                    record_id=session_id,
+                ),
+            ) as span:
+                created = await self.store.set_if_absent(session_id, True)
+                set_span_attributes(span, valkey_result_span_attrs(created=created))
+
             if created:
                 return True
 
-            await self.store.touch(session_id)
+            with tracer.start_as_current_span(
+                SPAN_VALKEY_OPERATION,
+                attributes=valkey_operation_span_attrs(
+                    operation="touch",
+                    prefix=self.store.prefix,
+                    record_id=session_id,
+                ),
+            ) as span:
+                updated = await self.store.touch(session_id)
+                set_span_attributes(span, valkey_result_span_attrs(updated=updated))
+
             return False
 
         except RedisError as exc:
@@ -70,7 +106,21 @@ class SessionTracker:
         """Return the current number of runtime session keys, if Valkey is available."""
 
         try:
-            return await self.store.count_matching()
+            pattern = f"{self.store.prefix}*"
+
+            with tracer.start_as_current_span(
+                SPAN_VALKEY_OPERATION,
+                attributes=valkey_operation_span_attrs(
+                    operation="scan_count",
+                    prefix=self.store.prefix,
+                    pattern=pattern,
+                    count=1000,
+                ),
+            ) as span:
+                count = await self.store.count_matching()
+                set_span_attributes(span, valkey_result_span_attrs(count=count))
+
+                return count
 
         except RedisError as exc:
             self._record_error("active_session_count", exc)
@@ -84,13 +134,11 @@ class SessionTracker:
         self.metrics.session_tracker_error(operation, exc)
         logger.warning("Session tracker %s failed: %s", operation, exc)
 
-        span = trace.get_current_span()
-        if span.get_span_context().is_valid:
-            span.record_exception(exc)
-            span.add_event(
-                "session_tracker.error",
-                {
-                    "operation": operation,
-                    "error.type": error_type,
-                },
-            )
+        add_current_span_error_event(
+            "session_tracker.error",
+            exc,
+            {
+                "operation": operation,
+                "error.type": error_type,
+            },
+        )
