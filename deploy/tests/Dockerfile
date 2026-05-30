@@ -8,6 +8,6 @@ WORKDIR /app
 COPY deploy/tests/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
-COPY tests/smoke /app/tests/smoke
+COPY deploy/tests/smoke /app/tests/smoke
 
 CMD ["pytest", "-q", "tests/smoke"]
