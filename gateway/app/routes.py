@@ -14,16 +14,13 @@ from opentelemetry.trace import Status, StatusCode
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from redis.exceptions import RedisError
 
-from app.gateway_responses import gateway_response_headers
 from app.http_utils import (
     parse_json_maybe,
     request_id_from_headers,
     session_id_from_headers,
 )
-from app.llm_payloads import model_label
 from app.loki_logging import LokiRequestContext
 from app.metrics import MetricsRequestContext
-from app.request_shaping import apply_chat_payload_overrides, apply_generic_payload_overrides
 from app.route_paths import (
     CHAT_COMPLETIONS_ROUTE,
     GATEWAY_METRICS_ROUTE,
@@ -36,6 +33,12 @@ from app.route_paths import (
 )
 from app.span_utils import mark_error_if_needed, request_span_attributes, set_span_attributes
 from app.state import AppState
+from app.utils import (
+    apply_chat_payload_overrides,
+    apply_generic_payload_overrides,
+    gateway_response_headers,
+    model_label,
+)
 
 tracer = trace.get_tracer("llm-gateway")
 

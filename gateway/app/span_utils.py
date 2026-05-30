@@ -7,7 +7,7 @@ from typing import Any
 
 from opentelemetry.trace import Span, Status, StatusCode
 
-from app.llm_payloads import max_completion_tokens, message_count, model_label
+from app.utils import max_completion_tokens, message_count, model_label
 
 
 def set_span_attributes(span: Span, attributes: Mapping[str, Any]) -> None:
