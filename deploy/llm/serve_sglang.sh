@@ -7,20 +7,20 @@ set -euo pipefail
 # Назначение:
 #   Запуск одного OpenAI-compatible SGLang endpoint с:
 #   - multi-GPU tensor parallel serving
-#   - reasoning parser для Qwen/Qwen3.x
-#   - tool calling parser
+#   - опциональным reasoning parser
+#   - опциональным tool calling parser
+#   - опциональными LoRA adapters
+#   - optional speculative decoding / MTP
 #   - Prometheus metrics
 #   - request logging без gateway/Loki
 #
 # Важное отличие от serve_vllm.sh:
 #   - У SGLang Radix cache / prefix cache включён по умолчанию.
 #     Его отключают флагом --disable-radix-cache.
-#   - Для Qwen thinking/non-thinking режима SGLang обычно ожидает
-#     chat_template_kwargs на уровне запроса:
-#       {"chat_template_kwargs": {"enable_thinking": false}}
-#     Поэтому этот launch script не может на 100% заменить vLLM-флаг
-#     --default-chat-template-kwargs. Лучше принудительно добавлять это
-#     в gateway или клиенте.
+#
+# Скрипт намеренно не привязан к конкретной модели или семейству моделей.
+# Модельно-специфичные parser'ы, adapters, speculative config и trust_remote_code
+# включай только после проверки документации конкретной модели и версии SGLang.
 ###############################################################################
 
 ############################################
@@ -46,14 +46,15 @@ HOST="0.0.0.0"
 
 PORT="30000"
 # Порт SGLang OpenAI-compatible API внутри контейнера.
-# У SGLang дефолт обычно 30000, в отличие от твоего vLLM 8000.
+# У SGLang дефолт обычно 30000; другие backend'ы могут использовать другие
+# внутренние порты.
 
 API_KEY=""
 # Если строка непустая, сервер будет требовать Bearer token.
 # Для локального isolated стенда можно оставить пустым.
 # Для любого внешнего доступа лучше задавать ключ.
 
-SERVED_MODEL_NAME="calls-model"
+SERVED_MODEL_NAME="local-model"
 # Внешний alias модели для OpenAI-compatible API.
 # Клиент будет передавать это значение в поле "model".
 # Если пусто, SGLang вернёт имя/путь модели.
@@ -67,7 +68,8 @@ TP_SIZE="1"
 # 1 — одна GPU.
 # 2 — модель делится на две GPU.
 # 4+ — только если реально есть GPU и модель/интерконнект это оправдывают.
-# Для 2x4090 обычно стартовая точка — 2.
+# Для multi-GPU запуска обычно начинают с числа GPU, на которое реально
+# планируется разделить одну модель.
 
 PP_SIZE="1"
 # Pipeline parallel size.
@@ -79,7 +81,8 @@ DP_SIZE=""
 # Data parallel size.
 # Пусто — не включать.
 # DP полезен для throughput, если модель помещается в каждую DP-группу.
-# Для твоего сценария 2x4090 + одна большая модель чаще нужен TP=2, не DP=2.
+# Если одна модель делится между GPU, чаще нужен TP. DP полезен, когда каждая
+# DP-группа может держать полную копию модели.
 
 ############################################
 # MODEL / MEMORY
@@ -88,8 +91,8 @@ CONTEXT_LENGTH="28768"
 # Максимальная длина контекста, которую сервер будет поддерживать.
 # Ближайший аналог vLLM MAX_MODEL_LEN.
 # Чем выше, тем больше давление на KV/cache memory pool.
-# Для call-center сценария держи чуть выше реального worst-case:
-# system prompt + history + RAG + max output.
+# Держи чуть выше реального worst-case:
+# system prompt + history/context + retrieved context + max output.
 # Если сервер не стартует или ловит OOM — снижать одним из первых.
 
 MEM_FRACTION_STATIC="0.88"
@@ -97,13 +100,13 @@ MEM_FRACTION_STATIC="0.88"
 # Ближайший аналог vLLM GPU_MEMORY_UTILIZATION, но семантически не 1-в-1.
 # Больше — больше места под KV/cache и потенциально выше concurrency.
 # Слишком высоко — OOM, проблемы старта, меньше пространства под временные буферы.
-# Стартовый диапазон для 4090: 0.82–0.90.
-# Для длинных prompt'ов и нестабильного старта снижай.
+# Практичный стартовый диапазон часто находится около 0.82–0.90.
+# Для длинных prompt'ов или нестабильного старта снижай.
 
 MAX_RUNNING_REQUESTS="20"
 # Максимальное число одновременно исполняемых запросов.
 # Ближайший аналог vLLM MAX_NUM_SEQS.
-# Для твоего SLA по ~20 одновременным звонкам стартовое значение — 20.
+# Подбирай под целевую конкурентность и длину запросов.
 # Если p90/p99 TTFT плывёт или начинаются retractions/OOM — снижать.
 # Если запросы короткие, cache hit высокий и GPU недогружена — повышать.
 
@@ -118,7 +121,8 @@ MAX_PREFILL_TOKENS="32768"
 # Ближайший практический аналог vLLM MAX_NUM_BATCHED_TOKENS для prefill-фазы.
 # Больше — лучше throughput на длинных prompt'ах, но выше пик нагрузки и TTFT.
 # Меньше — стабильнее latency, ниже риск OOM во время prefill.
-# Для 6k+ system prompt и concurrency около 20 стартуй с 32768 и сравни 16384.
+# Для длинных system prompt и высокой конкурентности сравни несколько значений,
+# например 32768 и 16384.
 
 CHUNKED_PREFILL_SIZE="4096"
 # Максимальный размер одного chunk при chunked prefill.
@@ -131,14 +135,15 @@ PREFILL_MAX_REQUESTS=""
 # Максимум запросов в одном prefill batch.
 # Пусто — не ограничивать.
 # Можно задать 1..N, если надо прижать конкуренцию именно на prefill.
-# Для телефонного workload иногда полезно ограничить, если первый turn душит всех.
+# Иногда полезно ограничить, если длинный первый turn ухудшает latency остальных
+# запросов.
 
 SCHEDULE_POLICY="lpm"
 # Политика scheduler.
 # fcfs — проще и предсказуемее: кто раньше пришёл, тот раньше обрабатывается.
 # lpm — longest prefix match; потенциально полезно при общих длинных префиксах,
 # потому что лучше совпадает с идеей Radix cache/prefix reuse.
-# Для твоего кейса обязательно сравнить lpm vs fcfs на одинаковом бенче.
+# Сравни lpm и fcfs на одинаковом benchmark, если latency/cache behavior важны.
 
 SCHEDULE_CONSERVATIVENESS="1.0"
 # Насколько осторожно scheduler набирает batch.
@@ -150,14 +155,14 @@ RADIX_EVICTION_POLICY="lru"
 # Политика вытеснения Radix cache.
 # lru — вытеснять давно неиспользованные ветки.
 # lfu — вытеснять редко используемые ветки.
-# Для звонков с одинаковым system prompt обычно lru — нормальный старт.
+# lru — нормальный старт при повторяющихся префиксах.
 # lfu стоит тестировать, если есть несколько постоянных сценариев с разной частотой.
 
 DISABLE_RADIX_CACHE="0"
 # 0 — оставить Radix cache включённым.
 # 1 — добавить --disable-radix-cache.
 # Отключать стоит только для контрольного бенча или диагностики.
-# В твоём workload с большим общим system prompt обычно cache должен быть включён.
+# В workload с большим общим system prompt cache обычно должен быть включён.
 
 ENABLE_CACHE_REPORT="1"
 # 1 — возвращать cached tokens в usage.prompt_tokens_details.
@@ -165,26 +170,65 @@ ENABLE_CACHE_REPORT="1"
 # Для production можно оставить включённым, если клиент/gateway не ломается от details.
 
 ############################################
-# QWEN / REASONING / THINKING
+# REASONING
 ############################################
-REASONING_PARSER="qwen3"
-# Parser reasoning-секции для Qwen3/Qwen3.5.
-# Нужен, чтобы отделять reasoning_content от обычного content.
-# Для Qwen3-Thinking моделей может потребоваться qwen3-thinking.
+REASONING_PARSER=""
+# Parser reasoning-секции.
+# Пусто — не добавлять --reasoning-parser.
+# Нужен только для моделей, чей reasoning-формат SGLang умеет явно разбирать.
+# Значение зависит от модели и версии SGLang; перед включением проверь
+# актуальный список parser'ов в документации SGLang.
 
 ############################################
 # TOOL CALLING / STRUCTURED OUTPUTS
 ############################################
-TOOL_CALL_PARSER="qwen3_coder"
+TOOL_CALL_PARSER=""
 # Parser tool calls.
-# Для Qwen3.5 cookbook SGLang указывает qwen3_coder.
-# Если конкретная модель/версия SGLang ругается, проверь parser qwen.
-# Для других семейств нужны другие parser'ы: llama3, mistral, deepseekv3 и т.д.
+# Пусто — не добавлять --tool-call-parser.
+# Значение зависит от модели, формата tool calls и версии SGLang.
+# Меняй только на parser, который реально поддерживается конкретной моделью/SGLang.
 
 GRAMMAR_BACKEND="xgrammar"
 # Backend constrained decoding / tool_choice / structured output.
 # xgrammar — дефолтный и основной вариант для tool_choice в SGLang.
 # Менять стоит только если упираешься в конкретный баг backend'а.
+
+############################################
+# LORA
+############################################
+ENABLE_LORA="0"
+# 1 — включить поддержку LoRA adapters.
+# 0 — не добавлять LoRA flags.
+# Если LORA_PATHS не пустой, SGLang также включает LoRA для backward compatibility,
+# но явный флаг оставлен для читаемости запуска.
+
+LORA_PATHS=()
+# Список adapters для --lora-paths.
+# Форматы SGLang:
+#   LORA_PATHS=("adapter_name=/path/to/adapter")
+#   LORA_PATHS=('{"lora_name":"adapter_name","lora_path":"/path/to/adapter","pinned":true}')
+# Для нескольких adapters добавь несколько элементов массива.
+
+MAX_LORAS_PER_BATCH="1"
+# Максимальное число adapters, которые могут участвовать в одном batch.
+# Увеличивай только если реально нужны несколько LoRA одновременно.
+
+MAX_LORA_RANK="16"
+# Максимальный rank LoRA adapters.
+# Должен покрывать rank всех adapters, которые будут загружаться.
+
+LORA_TARGET_MODULES=""
+# Список target modules через пробел или "all".
+# Пусто — SGLang попробует вывести modules из adapters в LORA_PATHS.
+
+LORA_BACKEND=""
+# Backend LoRA kernels.
+# Пусто — SGLang выбирает дефолт.
+# Задавай явно только при проверенной необходимости.
+
+ENABLE_LORA_OVERLAP_LOADING="0"
+# 1 — включить overlap loading LoRA weights с prefill/decode compute.
+# Полезно при динамической загрузке adapters, но требует отдельного теста.
 
 ############################################
 # QUANTIZATION / DTYPE
@@ -195,18 +239,17 @@ DTYPE="auto"
 # half/float16 — часто нужен для AWQ.
 # bfloat16 — нормальный вариант для BF16 чекпойнтов, если железо поддерживает.
 
-QUANTIZATION="fp8"
+QUANTIZATION=""
 # Явно указать quantization backend.
 # Пусто — SGLang пытается определить формат из модели/чекпойнта.
 # Возможные значения зависят от версии: fp8, awq, gptq, modelopt_fp4 и т.д.
-# Для готового FP8 checkpoint часто можно оставить пустым.
 # Для экспериментов с конкретным backend задавай явно.
 
 KV_CACHE_DTYPE="auto"
 # dtype KV cache.
 # auto — обычно лучший старт.
 # fp8_e4m3/fp8_e5m2 могут экономить память, но способны ухудшить качество.
-# Для reasoning-heavy и extraction-heavy задач сначала тестируй auto.
+# Для задач, чувствительных к качеству ответа, сначала тестируй auto.
 
 TRUST_REMOTE_CODE="0"
 # Разрешить выполнение custom code из model repo.
@@ -224,31 +267,46 @@ MODEL_LOADER_EXTRA_CONFIG=""
 # Для очень больших моделей иногда ускоряют загрузку multithread load.
 # Пример:
 #   {"enable_multithread_load": "true", "num_threads": 64}
-# Для обычного локального FP8 на 2x4090 можно оставить пустым.
+# Для обычного локального запуска можно оставить пустым.
 
 ############################################
-# SPECULATIVE DECODING / LATENCY
+# SPECULATIVE DECODING / MTP
 ############################################
-ENABLE_SPECULATIVE="0"
+ENABLE_SPECULATIVE_DECODING="0"
 # 0 — не включать speculative decoding.
 # 1 — добавить параметры ниже.
-# Для интерактивного TTS-кейса speculative decoding может снизить latency,
+# Для интерактивных сценариев speculative decoding может снизить latency,
 # но это отдельный эксперимент: сложнее отладка, выше риск несовместимости.
 
-SPECULATIVE_ALGO="NEXTN"
-SPECULATIVE_NUM_STEPS="3"
+SPECULATIVE_ALGORITHM="NEXTN"
+# Алгоритм speculative decoding: EAGLE, EAGLE3, NEXTN, STANDALONE, NGRAM.
+# NEXTN — alias EAGLE в SGLang и часто используется для MTP-like сценариев.
+
+ASSISTANT_MODEL="/assistant_model"
+# Draft/assistant model path или HF repo id.
+# Для NGRAM не нужен и не передаётся.
+
+SPECULATIVE_NUM_STEPS="5"
+# Количество speculative draft steps.
+
 SPECULATIVE_EAGLE_TOPK="1"
-SPECULATIVE_NUM_DRAFT_TOKENS="4"
-# Эти значения близки к Qwen3.5 cookbook-примеру.
-# Не включай вслепую в baseline. Сначала стабилизируй обычный serving.
+# top-k для EAGLE/NEXTN-подобных speculative режимов.
+# Пусто — не добавлять флаг.
+
+SPECULATIVE_NUM_DRAFT_TOKENS="6"
+# Количество draft tokens за speculative step.
+
+SPECULATIVE_DRAFT_MODEL_QUANTIZATION=""
+# Квантование draft model.
+# Пусто — не добавлять флаг.
 
 ############################################
 # OBSERVABILITY / LOGGING
 ############################################
 ENABLE_METRICS="1"
 # 1 — включить Prometheus /metrics.
-# Для твоего сценария обязательно включать: TTFT, latency, cache hit,
-# token usage, throughput и другие метрики нужны для сравнения с vLLM.
+# Обычно стоит включать: TTFT, latency, cache hit, token usage, throughput и
+# другие метрики нужны для сравнения backend'ов и настроек.
 
 ENABLE_MFU_METRICS="1"
 # 1 — включить estimated MFU-related metrics.
@@ -256,18 +314,19 @@ ENABLE_MFU_METRICS="1"
 
 COLLECT_TOKENS_HISTOGRAM="1"
 # 1 — собирать histogram prompt/generation tokens.
-# Полезно для call-center профилей: видно реальное распределение длины входов/выходов.
+# Полезно для профилей с разной длиной входов/выходов: видно реальное
+# распределение prompt/generation tokens.
 
 BUCKET_TIME_TO_FIRST_TOKEN=""
 # Кастомные buckets для TTFT histogram.
 # Пусто — дефолт SGLang.
-# Имеет смысл задать, если хочешь buckets вокруг TTS-relevant latency:
+# Имеет смысл задать, если хочешь buckets вокруг целевого latency:
 # например 0.1 0.2 0.3 0.5 0.75 1 1.5 2 3 5 10 20.
 
 BUCKET_INTER_TOKEN_LATENCY=""
 # Кастомные buckets для inter-token latency.
 # Пусто — дефолт SGLang.
-# Для TTS важен не только TTFT, но и стабильность потока токенов.
+# Для streaming важен не только TTFT, но и стабильность потока токенов.
 
 BUCKET_E2E_REQUEST_LATENCY=""
 # Кастомные buckets для end-to-end latency.
@@ -295,7 +354,8 @@ LOG_REQUESTS_LEVEL="1"
 # 1 — metadata + sampling params.
 # 2 — metadata + sampling params + partial input/output.
 # 3 — полный input/output.
-# Для звонков/телефонов лучше не ставить 3 без redaction.
+# Для данных с персональной или коммерческой информацией лучше не ставить 3
+# без redaction.
 
 LOG_REQUESTS_FORMAT="json"
 # text — человекочитаемо.
@@ -413,7 +473,7 @@ if [[ "$ENABLE_CACHE_REPORT" == "1" ]]; then
   ARGS+=("--enable-cache-report")
 fi
 
-# Qwen reasoning / tool calling
+# Reasoning / tool calling
 if [[ -n "$REASONING_PARSER" ]]; then
   ARGS+=("--reasoning-parser" "$REASONING_PARSER")
 fi
@@ -424,6 +484,30 @@ fi
 
 if [[ -n "$GRAMMAR_BACKEND" ]]; then
   ARGS+=("--grammar-backend" "$GRAMMAR_BACKEND")
+fi
+
+# LoRA
+if [[ "$ENABLE_LORA" == "1" ]]; then
+  ARGS+=("--enable-lora")
+  ARGS+=("--max-loras-per-batch" "$MAX_LORAS_PER_BATCH")
+  ARGS+=("--max-lora-rank" "$MAX_LORA_RANK")
+
+  if [[ "${#LORA_PATHS[@]}" -gt 0 ]]; then
+    ARGS+=("--lora-paths" "${LORA_PATHS[@]}")
+  fi
+
+  if [[ -n "$LORA_TARGET_MODULES" ]]; then
+    read -r -a _lora_target_modules <<< "$LORA_TARGET_MODULES"
+    ARGS+=("--lora-target-modules" "${_lora_target_modules[@]}")
+  fi
+
+  if [[ -n "$LORA_BACKEND" ]]; then
+    ARGS+=("--lora-backend" "$LORA_BACKEND")
+  fi
+
+  if [[ "$ENABLE_LORA_OVERLAP_LOADING" == "1" ]]; then
+    ARGS+=("--enable-lora-overlap-loading")
+  fi
 fi
 
 # Quantization / dtype
@@ -444,11 +528,23 @@ if [[ -n "$MODEL_LOADER_EXTRA_CONFIG" ]]; then
 fi
 
 # Speculative decoding
-if [[ "$ENABLE_SPECULATIVE" == "1" ]]; then
-  ARGS+=("--speculative-algo" "$SPECULATIVE_ALGO")
+if [[ "$ENABLE_SPECULATIVE_DECODING" == "1" ]]; then
+  ARGS+=("--speculative-algorithm" "$SPECULATIVE_ALGORITHM")
+
+  if [[ "${SPECULATIVE_ALGORITHM^^}" != "NGRAM" && -n "$ASSISTANT_MODEL" ]]; then
+    ARGS+=("--speculative-draft-model-path" "$ASSISTANT_MODEL")
+  fi
+
   ARGS+=("--speculative-num-steps" "$SPECULATIVE_NUM_STEPS")
-  ARGS+=("--speculative-eagle-topk" "$SPECULATIVE_EAGLE_TOPK")
   ARGS+=("--speculative-num-draft-tokens" "$SPECULATIVE_NUM_DRAFT_TOKENS")
+
+  if [[ -n "$SPECULATIVE_EAGLE_TOPK" ]]; then
+    ARGS+=("--speculative-eagle-topk" "$SPECULATIVE_EAGLE_TOPK")
+  fi
+
+  if [[ -n "$SPECULATIVE_DRAFT_MODEL_QUANTIZATION" ]]; then
+    ARGS+=("--speculative-draft-model-quantization" "$SPECULATIVE_DRAFT_MODEL_QUANTIZATION")
+  fi
 fi
 
 # Observability / metrics
@@ -561,10 +657,19 @@ echo "reasoning parser:         $([[ -n "$REASONING_PARSER" ]] && echo "$REASONI
 echo "tool call parser:         $([[ -n "$TOOL_CALL_PARSER" ]] && echo "$TOOL_CALL_PARSER" || echo disabled)"
 echo "grammar backend:          $GRAMMAR_BACKEND"
 echo
+echo "lora:                     $([[ "$ENABLE_LORA" == "1" ]] && echo enabled || echo disabled)"
+echo "lora paths:               $([[ "${#LORA_PATHS[@]}" -gt 0 ]] && printf '%s ' "${LORA_PATHS[@]}" || echo disabled)"
+echo "max loras per batch:      $MAX_LORAS_PER_BATCH"
+echo "max lora rank:            $MAX_LORA_RANK"
+echo
 echo "dtype:                    $DTYPE"
 echo "quantization:             $([[ -n "$QUANTIZATION" ]] && echo "$QUANTIZATION" || echo auto/model)"
 echo "kv cache dtype:           $KV_CACHE_DTYPE"
 echo "trust remote code:        $([[ "$TRUST_REMOTE_CODE" == "1" ]] && echo enabled || echo disabled)"
+echo
+echo "speculative decoding:     $([[ "$ENABLE_SPECULATIVE_DECODING" == "1" ]] && echo enabled || echo disabled)"
+echo "speculative algorithm:    $SPECULATIVE_ALGORITHM"
+echo "assistant model:          $([[ -n "$ASSISTANT_MODEL" ]] && echo "$ASSISTANT_MODEL" || echo none)"
 echo
 echo "metrics:                  $([[ "$ENABLE_METRICS" == "1" ]] && echo enabled || echo disabled)"
 echo "request logging:          $([[ "$LOG_REQUESTS" == "1" ]] && echo enabled || echo disabled)"
@@ -577,7 +682,7 @@ echo "disable custom allreduce: $([[ "$DISABLE_CUSTOM_ALL_REDUCE" == "1" ]] && e
 echo "p2p check:                $([[ "$ENABLE_P2P_CHECK" == "1" ]] && echo enabled || echo disabled)"
 echo
 
-LAUNCHER=(python3 -m sglang.launch_server)
+LAUNCHER=(sglang serve)
 
 echo "full command:"
 printf ' %q' "${LAUNCHER[@]}" "${ARGS[@]}"

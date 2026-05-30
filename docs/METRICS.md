@@ -106,9 +106,12 @@ or `span_id` as Prometheus labels.
 
 Backend metrics are backend-specific and are scraped directly:
 
-- vLLM variant: `vllm:8000/metrics` through `configs/prometheus-vllm.yml`.
+- vLLM variant: `vllm:8000/metrics` through
+  `deploy/llm/configs/prometheus-vllm.yaml`.
 - SGLang variant: `sglang:30000/metrics` through
-  `configs/prometheus-sglang.yml`.
+  `deploy/llm/configs/prometheus-sglang.yaml`.
 
-This keeps the gateway invariant to backend implementation while still allowing
-Prometheus dashboards to use engine-specific metrics.
+The gateway stack uses its own Prometheus at
+`deploy/gateway/configs/prometheus-gateway.yaml` and scrapes only
+`/gateway/metrics`. This keeps gateway metrics independent from backend-engine
+metrics.

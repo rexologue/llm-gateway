@@ -1,0 +1,862 @@
+{
+  "uid": "llm-gateway-prometheus-overview",
+  "title": "Gateway / Prometheus Overview",
+  "tags": [
+    "llm-gateway",
+    "gateway",
+    "prometheus"
+  ],
+  "timezone": "browser",
+  "refresh": "10s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "DS_PROMETHEUS",
+        "type": "datasource",
+        "label": "Prometheus datasource",
+        "query": "prometheus",
+        "current": {
+          "selected": false,
+          "text": "Prometheus",
+          "value": "prometheus"
+        },
+        "hide": 0,
+        "refresh": 1
+      },
+      {
+        "name": "route",
+        "type": "query",
+        "label": "route",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "definition": "label_values(gateway_requests_total, route)",
+        "query": {
+          "qryType": 1,
+          "query": "label_values(gateway_requests_total, route)",
+          "refId": "Prometheus-route"
+        },
+        "refresh": 1,
+        "includeAll": true,
+        "multi": true,
+        "sort": 1,
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "model",
+        "type": "query",
+        "label": "model",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "definition": "label_values(gateway_request_e2e_seconds_count, model)",
+        "query": {
+          "qryType": 1,
+          "query": "label_values(gateway_request_e2e_seconds_count, model)",
+          "refId": "Prometheus-model"
+        },
+        "refresh": 1,
+        "includeAll": true,
+        "multi": true,
+        "sort": 1,
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "stream",
+        "type": "custom",
+        "label": "stream",
+        "query": "true,false",
+        "includeAll": true,
+        "multi": true,
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "result",
+        "type": "custom",
+        "label": "result",
+        "query": "success,error,cancelled",
+        "includeAll": true,
+        "multi": true,
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "status_family",
+        "type": "custom",
+        "label": "status_family",
+        "query": "2xx,4xx,5xx,unknown",
+        "includeAll": true,
+        "multi": true,
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "session_first_request",
+        "type": "custom",
+        "label": "session first request",
+        "query": "true,false",
+        "includeAll": true,
+        "multi": true,
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Active Sessions",
+      "description": "Runtime session keys currently visible to the gateway session tracker.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "gateway_active_sessions",
+          "legendFormat": "active",
+          "range": true,
+          "editorMode": "code"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Gateway RPS",
+      "description": "Accepted gateway requests per second after route and stream mode are known.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 4,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(gateway_requests_total{route=~\"$route\",stream=~\"$stream\"}[$__rate_interval]))",
+          "legendFormat": "rps",
+          "range": true,
+          "editorMode": "code"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Error RPS",
+      "description": "Terminal gateway outcomes classified as errors by HTTP status or missing response.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(gateway_responses_total{route=~\"$route\",stream=~\"$stream\",result=\"error\"}[$__rate_interval]))",
+          "legendFormat": "errors",
+          "range": true,
+          "editorMode": "code"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "TTFT p95",
+      "description": "Time to first non-empty streamed backend chunk. Recorded only for streamed responses with an observed first chunk.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_request_ttft_seconds_bucket{route=~\"$route\",model=~\"$model\",stream=~\"$stream\",result=~\"$result\",status_family=~\"$status_family\"}[$__rate_interval])))",
+          "legendFormat": "p95",
+          "range": true,
+          "editorMode": "code"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "E2E p95",
+      "description": "End-to-end gateway latency through final non-streaming response, full stream completion, error, or cancellation.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_request_e2e_seconds_bucket{route=~\"$route\",model=~\"$model\",stream=~\"$stream\",result=~\"$result\",status_family=~\"$status_family\"}[$__rate_interval])))",
+          "legendFormat": "p95",
+          "range": true,
+          "editorMode": "code"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Session Init Share",
+      "description": "Share of chat-completion session requests classified as first request in a runtime session.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 20,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * sum(rate(gateway_session_requests_total{route=~\"$route\",stream=~\"$stream\",session_first_request=\"true\"}[$__rate_interval])) / clamp_min(sum(rate(gateway_session_requests_total{route=~\"$route\",stream=~\"$stream\"}[$__rate_interval])), 1e-9)",
+          "legendFormat": "first request share",
+          "range": true,
+          "editorMode": "code"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Requests by Route and Stream",
+      "description": "Accepted request rate split by gateway route and stream mode.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (route, stream) (rate(gateway_requests_total{route=~\"$route\",stream=~\"$stream\"}[$__rate_interval]))",
+          "legendFormat": "{{route}} stream={{stream}}",
+          "range": true,
+          "editorMode": "code"
+        }
+      ],
+      "options": {}
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Response Outcomes",
+      "description": "Terminal response rate by HTTP status family and gateway result classification.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (status_family, result) (rate(gateway_responses_total{route=~\"$route\",stream=~\"$stream\",result=~\"$result\",status_family=~\"$status_family\"}[$__rate_interval]))",
+          "legendFormat": "{{status_family}} {{result}}",
+          "range": true,
+          "editorMode": "code"
+        }
+      ],
+      "options": {}
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "E2E Quantiles",
+      "description": "Gateway end-to-end latency quantiles for all accepted gateway requests.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(gateway_request_e2e_seconds_bucket{route=~\"$route\",model=~\"$model\",stream=~\"$stream\",result=~\"$result\",status_family=~\"$status_family\"}[$__rate_interval])))",
+          "legendFormat": "p50",
+          "range": true,
+          "editorMode": "code"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_request_e2e_seconds_bucket{route=~\"$route\",model=~\"$model\",stream=~\"$stream\",result=~\"$result\",status_family=~\"$status_family\"}[$__rate_interval])))",
+          "legendFormat": "p95",
+          "range": true,
+          "editorMode": "code"
+        },
+        {
+          "refId": "C",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(gateway_request_e2e_seconds_bucket{route=~\"$route\",model=~\"$model\",stream=~\"$stream\",result=~\"$result\",status_family=~\"$status_family\"}[$__rate_interval])))",
+          "legendFormat": "p99",
+          "range": true,
+          "editorMode": "code"
+        }
+      ],
+      "options": {}
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "TTFT Quantiles",
+      "description": "Streaming time-to-first-token quantiles. Empty for non-streaming requests because no TTFT is observed there.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 12,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(gateway_request_ttft_seconds_bucket{route=~\"$route\",model=~\"$model\",stream=~\"$stream\",result=~\"$result\",status_family=~\"$status_family\"}[$__rate_interval])))",
+          "legendFormat": "p50",
+          "range": true,
+          "editorMode": "code"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_request_ttft_seconds_bucket{route=~\"$route\",model=~\"$model\",stream=~\"$stream\",result=~\"$result\",status_family=~\"$status_family\"}[$__rate_interval])))",
+          "legendFormat": "p95",
+          "range": true,
+          "editorMode": "code"
+        },
+        {
+          "refId": "C",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(gateway_request_ttft_seconds_bucket{route=~\"$route\",model=~\"$model\",stream=~\"$stream\",result=~\"$result\",status_family=~\"$status_family\"}[$__rate_interval])))",
+          "legendFormat": "p99",
+          "range": true,
+          "editorMode": "code"
+        }
+      ],
+      "options": {}
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Session E2E: First vs Repeat",
+      "description": "Chat-completion E2E p95 split by whether the gateway classified the request as the first request in a runtime session.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le, session_first_request) (rate(gateway_session_request_e2e_seconds_bucket{route=~\"$route\",model=~\"$model\",stream=~\"$stream\",session_first_request=~\"$session_first_request\",result=~\"$result\",status_family=~\"$status_family\"}[$__rate_interval])))",
+          "legendFormat": "first={{session_first_request}} p95",
+          "range": true,
+          "editorMode": "code"
+        }
+      ],
+      "options": {}
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Session TTFT: First vs Repeat",
+      "description": "Chat-completion streaming TTFT p95 split by first-in-session classification.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 20,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le, session_first_request) (rate(gateway_session_request_ttft_seconds_bucket{route=~\"$route\",model=~\"$model\",stream=~\"$stream\",session_first_request=~\"$session_first_request\",result=~\"$result\",status_family=~\"$status_family\"}[$__rate_interval])))",
+          "legendFormat": "first={{session_first_request}} p95",
+          "range": true,
+          "editorMode": "code"
+        }
+      ],
+      "options": {}
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Loki Push and Drops",
+      "description": "Health of the gateway Loki publisher: push attempts by status and local event drops by reason.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 28,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (status) (rate(gateway_loki_push_total[$__rate_interval]))",
+          "legendFormat": "push {{status}}",
+          "range": true,
+          "editorMode": "code"
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (reason) (rate(gateway_loki_events_dropped_total[$__rate_interval]))",
+          "legendFormat": "drop {{reason}}",
+          "range": true,
+          "editorMode": "code"
+        }
+      ],
+      "options": {}
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Session Tracker Errors",
+      "description": "Valkey failures while classifying or refreshing runtime sessions.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 28,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (operation, error_type) (rate(gateway_session_tracker_errors_total[$__rate_interval]))",
+          "legendFormat": "{{operation}} {{error_type}}",
+          "range": true,
+          "editorMode": "code"
+        }
+      ],
+      "options": {}
+    }
+  ],
+  "id": null,
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true
+}

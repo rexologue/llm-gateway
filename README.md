@@ -13,18 +13,18 @@ The gateway:
 - emits OpenTelemetry traces to an OTLP collector when enabled;
 - tracks first request in a session by `X-Session-ID` using Valkey.
 
-The gateway no longer exposes `/metrics`. Prometheus should scrape backend
-metrics directly from the backend service, for example `vllm:8000/metrics` or
-`sglang:30000/metrics`.
+The gateway no longer exposes `/metrics`. The LLM compose stack has its own
+Prometheus for backend metrics, and the gateway compose stack has a separate
+Prometheus for gateway metrics.
 
 ## Layout
 
 ```text
 gateway/          FastAPI gateway code
-configs/          Loki, Valkey, and Prometheus scrape configs
-deploy/           backend-specific compose files and launch scripts
+deploy/llm        LLM engine compose files, launch scripts, backend metrics
+deploy/gateway    gateway compose file, Loki, Valkey, Prometheus, Tempo, OTEL
+observability/    dashboard JSON exports for existing Grafana/workspace imports
 docs/             deployment, metrics, and tracing reference
-observability/    Tempo, OpenTelemetry Collector, and Grafana stack
 ```
 
 Detailed references:
@@ -32,50 +32,55 @@ Detailed references:
 - [Deployment](docs/DEPLOY.md)
 - [Metrics](docs/METRICS.md)
 - [Traces](docs/TRACES.md)
+- [Dashboards](docs/DASHBOARDS.md)
 
 ## Running
 
 Create deployment settings first:
 
 ```bash
-cp deploy/.env.example deploy/.env
-# edit deploy/.env
-cp observability/.env.example observability/.env
-# edit observability/.env
+cp deploy/llm/.env.example deploy/llm/.env
+# edit deploy/llm/.env
+
+cp deploy/gateway/.env.example deploy/gateway/.env
+# edit deploy/gateway/.env
 ```
 
 vLLM variant:
 
 ```bash
-cd deploy
+cd deploy/llm
 docker compose -f docker-compose.vllm.yaml up -d
 ```
 
 SGLang variant:
 
 ```bash
-cd deploy
+cd deploy/llm
 docker compose -f docker-compose.sglang.yaml up -d
 ```
 
-Observability stack:
+Gateway stack:
 
 ```bash
-cd observability
+cd deploy/gateway
 docker compose -f docker-compose.yaml up -d
 ```
 
-Grafana loads the `Gateway Overview` dashboard from provisioning on startup.
+Optional smoke tests are available through the compose `test` profile. They send
+one chat completion request directly to the selected backend or through the
+gateway and return the test container exit code. See [Deployment](docs/DEPLOY.md)
+for commands.
 
 Default ports:
 
-- gateway: `http://127.0.0.1:9090`
-- gateway metrics: `http://127.0.0.1:9090/gateway/metrics`
-- Prometheus: `http://127.0.0.1:9091`
-- Loki: `http://127.0.0.1:9092`
-- Grafana: `http://127.0.0.1:3000`
-- Tempo: `http://127.0.0.1:3200`
-- SGLang direct API in the SGLang variant: `http://127.0.0.1:9900`
+- LLM API: `http://127.0.0.1:9900`
+- LLM Prometheus: `http://0.0.0.0:9191`
+- gateway: `http://0.0.0.0:9090`
+- gateway metrics endpoint: `http://0.0.0.0:9090/gateway/metrics`
+- gateway Prometheus: `http://0.0.0.0:9091`
+- Loki: `http://0.0.0.0:9092`
+- Tempo: `http://0.0.0.0:3200`
 
 ## Backend Contract
 
@@ -99,7 +104,7 @@ Generic proxying also supports routes such as:
 | Variable | Meaning | Default |
 | --- | --- | --- |
 | `GATEWAY_HOST` | Host address used by Compose port bindings | `0.0.0.0` |
-| `GATEWAY_BACKEND_BASE_URL` | OpenAI-compatible backend base URL | `http://backend:8000` |
+| `GATEWAY_BACKEND_BASE_URL` | OpenAI-compatible backend base URL | `http://host.docker.gateway:9900` |
 | `GATEWAY_FORCED_MAX_COMPLETION_TOKENS` | Optional forced `max_completion_tokens` on chat requests | unset |
 | `GATEWAY_FORCED_THINKING_DISABLED` | Force `enable_thinking=false` on JSON request payloads | `false` |
 | `GATEWAY_LOKI_APP_NAME` | Loki `app` label | `llm-gateway` |
@@ -130,9 +135,11 @@ Loki event buckets:
 - `gateway_error` for failures before a backend response exists.
 
 Request and response events include `request_id`, optional `session_id`,
-`session_present`, `session_first_request`, `trace_id`, and `span_id`.
-Request generation events include `request_json` and `message_cnt` without logging message bodies.
-Generation response events keep the backend payload, `assistant_text`, timing, status, size, and hash fields.
+`session_first_request`, `trace_id`, and `span_id`.
+Request generation events include sanitized `request_json` without message
+bodies and `tool_call_count`.
+Generation response events keep the backend payload, `assistant_text`, timing,
+status, and size fields.
 Streaming generation responses are stored as a valid JSON object containing ordered SSE events.
 Non-generation response events include sanitized JSON payloads when the backend returns JSON.
 Sensitive headers such as `Authorization`, cookies, and API keys are redacted.
@@ -144,7 +151,9 @@ non-excluded routes. The chat completion path also emits custom domain spans:
 
 - `llm.gateway.request` for the full chat completion gateway request;
 - `llm.backend.request` for the backend call;
+- `llm.session.flow` for gateway-side session handling;
+- `valkey.operation` for session-layer Valkey operations;
 - `llm.stream_response` for streaming response iteration.
 
-The observability stack in `observability/` provides Tempo and Grafana. See
+The gateway compose stack provides Tempo and the OTEL Collector. See
 [Traces](docs/TRACES.md) for span attributes, error semantics, and lookup tips.

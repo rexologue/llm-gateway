@@ -1,0 +1,233 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "${DS_LOKI}"
+      },
+      "description": "Request-generation events from Loki. Shows request metadata, sanitized request JSON, session classification, and tool call count without message bodies.",
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "pluginVersion": "12.3.2",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${DS_LOKI}"
+          },
+          "expr": "{app=~\"$app\", bucket=\"request_generation\", route=~\"$route\"} | json | session_id=~\"$session_id\" | request_id=~\"$request_id\" | line_format \"ts={{.ts}} request_id={{.request_id}} session_id={{.session_id}} first={{.session_first_request}} route={{.route}} model={{.request_json_model}} stream={{.stream}} tools={{.tool_call_count}} body_bytes={{.body_bytes}} request={{.request_json}}\""
+        }
+      ],
+      "title": "Generation Requests",
+      "type": "logs"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "${DS_LOKI}"
+      },
+      "description": "Response-generation events from Loki. Shows terminal status, E2E, optional TTFT, response size, and extracted assistant text.",
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 12
+      },
+      "id": 2,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "pluginVersion": "12.3.2",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${DS_LOKI}"
+          },
+          "expr": "{app=~\"$app\", bucket=\"response_generation\", route=~\"$route\"} | json | session_id=~\"$session_id\" | request_id=~\"$request_id\" | line_format \"ts={{.ts}} request_id={{.request_id}} session_id={{.session_id}} first={{.session_first_request}} route={{.route}} status={{.status_code}} level={{.level}} e2e={{.e2e_sec}} ttft={{.ttft_sec}} stream={{.stream}} body_bytes={{.body_bytes}} assistant_text={{.assistant_text}}\""
+        }
+      ],
+      "title": "Generation Responses",
+      "type": "logs"
+    },
+    {
+      "id": 3,
+      "type": "logs",
+      "title": "Gateway Errors and Warning Responses",
+      "description": "Terminal gateway_error events and warning/error response events. Use this to jump from request_id/session_id into failed gateway or backend flows.",
+      "datasource": {
+        "type": "loki",
+        "uid": "${DS_LOKI}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 24,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${DS_LOKI}"
+          },
+          "expr": "{app=~\"$app\", route=~\"$route\"} | json | session_id=~\"$session_id\" | request_id=~\"$request_id\" | level=~\"warn|error\" | line_format \"ts={{.ts}} bucket={{.bucket}} level={{.level}} request_id={{.request_id}} session_id={{.session_id}} route={{.route}} status={{.status_code}} warn_reason={{.warn_reason}} error={{.error_type}} {{.error_message}}\""
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "wrapLogMessage": true
+      }
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 42,
+  "tags": [
+    "llm-gateway",
+    "gateway",
+    "loki",
+    "logs"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "DS_LOKI",
+        "type": "datasource",
+        "label": "Loki datasource",
+        "query": "loki",
+        "current": {
+          "selected": false,
+          "text": "Loki",
+          "value": "loki"
+        },
+        "hide": 0,
+        "refresh": 1
+      },
+      {
+        "name": "app",
+        "type": "query",
+        "label": "app",
+        "datasource": {
+          "type": "loki",
+          "uid": "${DS_LOKI}"
+        },
+        "definition": "label_values(app)",
+        "query": "label_values(app)",
+        "refresh": 1,
+        "includeAll": true,
+        "multi": true,
+        "sort": 1,
+        "current": {
+          "selected": false,
+          "text": "llm-gateway",
+          "value": "llm-gateway"
+        }
+      },
+      {
+        "name": "route",
+        "type": "query",
+        "label": "route",
+        "datasource": {
+          "type": "loki",
+          "uid": "${DS_LOKI}"
+        },
+        "definition": "label_values({app=~\"$app\"}, route)",
+        "query": "label_values({app=~\"$app\"}, route)",
+        "refresh": 1,
+        "includeAll": true,
+        "multi": true,
+        "sort": 1,
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "session_id",
+        "type": "textbox",
+        "label": "session_id regex",
+        "query": ".*",
+        "current": {
+          "text": ".*",
+          "value": ".*"
+        }
+      },
+      {
+        "name": "request_id",
+        "type": "textbox",
+        "label": "request_id regex",
+        "query": ".*",
+        "current": {
+          "text": ".*",
+          "value": ".*"
+        }
+      }
+    ]
+  },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "",
+  "title": "Gateway / Loki Events",
+  "uid": "llm-gateway-loki-events",
+  "version": 1,
+  "weekStart": ""
+}

@@ -1,8 +1,9 @@
 # Traces
 
-The gateway can export OpenTelemetry traces to an OTLP collector. The provided
-observability stack receives those traces with the OpenTelemetry Collector,
-stores them in Tempo, and exposes them through Grafana.
+The gateway can export OpenTelemetry traces to an OTLP collector. The gateway
+compose stack includes an OpenTelemetry Collector and Tempo. Grafana is not
+part of the deployment stack; dashboard JSON exports live in
+`observability/dashboards/`.
 
 Tracing is useful when one request has to be followed end-to-end: gateway
 request handling, backend call timing, streaming iteration, cancellations, and
@@ -21,15 +22,15 @@ Tracing is controlled by deployment environment variables:
 | `GATEWAY_OTEL_SAMPLE_RATIO` | Trace sampling ratio from `0.0` to `1.0` | `1.0` |
 | `GATEWAY_OTEL_FASTAPI_EXCLUDED_URLS` | Comma-separated FastAPI instrumentation exclusions | `/gateway/metrics,/health,/$` |
 
-For the compose variants in `deploy/`, traces are usually sent to the
-observability stack through:
+For `deploy/gateway/docker-compose.yaml`, traces are sent inside the gateway
+compose network through:
 
 ```text
-GATEWAY_OTEL_EXPORTER_OTLP_ENDPOINT=http://host.docker.internal:4317
+GATEWAY_OTEL_EXPORTER_OTLP_ENDPOINT=http://llm-gateway-otel-collector:4317
 ```
 
-The collector then exports to Tempo at `tempo:4317` inside the
-`observability/` compose network.
+The collector then exports to Tempo at `llm-gateway-tempo:4317` inside the
+gateway compose network.
 
 ## Span Model
 

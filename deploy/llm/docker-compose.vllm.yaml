@@ -1,0 +1,104 @@
+services:
+  vllm:
+    image: ${LLM_VLLM_IMAGE}
+    container_name: ${LLM_VLLM_CONTAINER_NAME}
+    restart: unless-stopped
+    entrypoint: ["/bin/bash", "-lc"]
+    command: ["bash /serve_vllm.sh"]
+    runtime: nvidia
+
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/v1/models >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+    ports:
+      - "${LLM_HOST}:${LLM_HTTP_PORT}:8000"
+
+    volumes:
+      - ${LLM_VLLM_MODEL_PATH}:/model:ro
+      - ./serve_vllm.sh:/serve_vllm.sh:ro
+
+    networks:
+      - llm
+
+
+  llm-smoke-tests:
+    profiles: ["test"]
+    build:
+      context: ../..
+      dockerfile: deploy/tests/Dockerfile
+
+    depends_on:
+      vllm:
+        condition: service_healthy
+
+    env_file:
+      - path: .env
+        required: false
+
+    environment:
+      BASE_URL: http://vllm:8000
+
+    networks:
+      - llm
+
+
+  llm-prometheus:
+    image: ${LLM_PROMETHEUS_IMAGE}
+    container_name: ${LLM_PROMETHEUS_CONTAINER_NAME}
+    restart: unless-stopped
+
+    ports:
+      - "${LLM_PROMETHEUS_HOST}:${LLM_PROMETHEUS_HTTP_PORT}:9090"
+
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+
+    volumes:
+      - ./configs/prometheus-vllm.yaml:/etc/prometheus/prometheus.yml:ro
+      - llm-prometheus-data:/prometheus
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    networks:
+      - llm
+
+
+  llm-node-exporter:
+    image: ${LLM_NODE_EXPORTER_IMAGE}
+    container_name: ${LLM_NODE_EXPORTER_CONTAINER_NAME}
+    restart: unless-stopped
+    network_mode: host
+    pid: host
+
+    command:
+      - --path.rootfs=/host
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+
+    volumes:
+      - /:/host:ro,rslave
+
+
+  llm-dcgm-exporter:
+    image: ${LLM_DCGM_EXPORTER_IMAGE}
+    container_name: ${LLM_DCGM_EXPORTER_CONTAINER_NAME}
+    restart: unless-stopped
+    runtime: nvidia
+
+    networks:
+      - llm
+
+
+volumes:
+  llm-prometheus-data:
+
+
+networks:
+  llm:
+    driver: bridge

@@ -6,9 +6,15 @@ set -euo pipefail
 #
 # Назначение:
 #   Запуск одного OpenAI-compatible vLLM endpoint с:
-#   - non-thinking режимом для Qwen3.5
-#   - поддержкой tool calling
+#   - опциональным reasoning parser
+#   - опциональным tool calling parser
+#   - опциональными LoRA adapters
+#   - опциональным speculative decoding / MTP
 #   - базовыми параметрами памяти/батчинга
+#
+# Скрипт намеренно не привязан к конкретной модели или семейству моделей.
+# Модельно-специфичные parser'ы, adapters, speculative config и trust_remote_code включай
+# только после проверки документации конкретной модели и версии vLLM.
 ###############################################################################
 
 ############################################
@@ -36,7 +42,7 @@ API_KEY=""
 # Оставь пустым для отключения авторизации.
 # Для публичного или полупубличного доступа лучше задавать непустой ключ.
 
-SERVED_MODEL_NAME="calls-model"
+SERVED_MODEL_NAME="local-model"
 # Имя модели, которое клиент будет указывать в поле "model".
 # Это просто внешний alias.
 # Меняй, если хочешь красивое или более конкретное имя в API.
@@ -88,39 +94,31 @@ MAX_NUM_BATCHED_TOKENS="32768"
 # Меняй вместе с MAX_NUM_SEQS, а не изолированно.
 
 ############################################
-# QWEN / REASONING / CHAT TEMPLATE
+# REASONING
 ############################################
-REASONING_PARSER="qwen3"
-# Парсер reasoning-вывода для Qwen3/Qwen3.5.
-# Нужен, чтобы сервер корректно понимал reasoning-формат модели.
-# Для другой модельной семьи это значение может быть другим.
-
-ENABLE_THINKING="false"
-# Логический флаг только для читаемости конфигурации.
-# Реально переключение делается через DEFAULT_CHAT_TEMPLATE_KWARGS ниже.
-# false — не давать модели уходить в reasoning/thinking режим.
-# true — разрешить thinking, если он нужен.
-
-DEFAULT_CHAT_TEMPLATE_KWARGS='{"enable_thinking": false}'
-# Серверный дефолт для chat_template_kwargs.
-# Для Qwen3.5 это штатный способ жёстко выключить thinking.
-# Если нужен thinking по умолчанию — ставь true.
-# Если клиент сам передаёт chat_template_kwargs в запросе, он может переопределить это.
+REASONING_PARSER=""
+# Парсер reasoning-вывода.
+# Пусто — не добавлять --reasoning-parser.
+# Нужен только для моделей, чей reasoning-формат vLLM умеет явно разбирать.
+# Значение зависит от модели и версии vLLM; перед включением проверь
+# актуальный список parser'ов в документации vLLM.
 
 ############################################
 # TOOL CALLING
 ############################################
-ENABLE_AUTO_TOOL_CHOICE="1"
+ENABLE_AUTO_TOOL_CHOICE="0"
 # Включает automatic function calling на стороне vLLM.
-# Без этого tool_choice="auto" не будет работать как ожидается.
+# Без этого tool_choice="auto" может не работать как ожидается.
+# Для универсального старта выключено, потому что обычно требуется parser,
+# совместимый с конкретной моделью.
 # 1 — включено
 # 0 — выключено
 
-TOOL_CALL_PARSER="qwen3_coder"
+TOOL_CALL_PARSER=""
 # Парсер, который извлекает tool calls из сырого вывода модели.
-# Для актуального recipe Qwen3.5 рекомендуется qwen3_coder.
-# Для других моделей parser может отличаться.
-# Меняй только на parser, который реально поддерживается твоей моделью/vLLM.
+# Пусто — не добавлять --tool-call-parser.
+# Значение зависит от модели, формата tool calls и версии vLLM.
+# Меняй только на parser, который реально поддерживается конкретной моделью/vLLM.
 
 ############################################
 # PERFORMANCE FEATURES
@@ -140,8 +138,89 @@ LANGUAGE_MODEL_ONLY="1"
 # 0 — не ограничивать
 # Если работаешь с мультимодальной моделью, этот флаг может быть не нужен.
 
+ENABLE_PROMPT_TOKENS_DETAILS="1"
+# 1 — добавлять prompt_tokens_details в OpenAI-compatible usage.
+# При включённом prefix caching это позволяет видеть cached_tokens в usage.
+# 0 — не добавлять дополнительные token details.
+
 ############################################
-# DTYPE / EXECUTION
+# LORA
+############################################
+ENABLE_LORA="0"
+# 1 — включить поддержку LoRA adapters.
+# 0 — не добавлять LoRA flags.
+# Для vLLM adapters обычно передаются через --lora-modules ниже.
+
+LORA_MODULES=()
+# Список LoRA adapters в формате, который понимает vLLM.
+# Пример:
+#   LORA_MODULES=("adapter_name=/path/to/adapter")
+# Для нескольких adapters добавь несколько элементов массива.
+
+MAX_LORAS="1"
+# Максимальное число LoRA adapters в одном batch.
+# Увеличивай только если реально нужны несколько adapters одновременно.
+
+MAX_LORA_RANK="16"
+# Максимальный rank LoRA.
+# Должен покрывать rank подключаемых adapters.
+# Чем выше rank, тем больше memory overhead.
+
+LORA_DTYPE="auto"
+# dtype LoRA adapters.
+# auto — использовать dtype базовой модели.
+
+MAX_CPU_LORAS=""
+# Сколько LoRA adapters можно держать в CPU memory.
+# Пусто — не добавлять флаг.
+
+FULLY_SHARDED_LORAS="0"
+# 1 — включить fully sharded LoRA вычисления.
+# Может быть быстрее на больших rank/контексте/TP, но требует отдельного теста.
+
+LORA_TARGET_MODULES=""
+# Ограничить LoRA конкретными suffix'ами модулей.
+# Пусто — vLLM использует все поддерживаемые LoRA modules.
+# Если нужно, укажи значения через пробел: "q_proj k_proj v_proj o_proj".
+
+############################################
+# SPECULATIVE DECODING / MTP
+############################################
+ENABLE_SPECULATIVE_DECODING="0"
+# 0 — обычный serving.
+# 1 — добавить --speculative-config.
+# Для MTP/draft/EAGLE это отдельный perf-эксперимент: сначала проверь
+# совместимость target model, draft/assistant model и tokenizer.
+
+SPECULATIVE_CONFIG=""
+# Готовый JSON для --speculative-config.
+# Если непустой, используется как есть и переменные ниже игнорируются.
+# Это лучший вариант для сложных MTP/EAGLE конфигураций.
+
+SPECULATIVE_METHOD="draft_model"
+# Метод speculative decoding.
+# Частые варианты: draft_model, mtp, ngram, eagle3.
+# Если model не задан, vLLM может вывести метод из остальных параметров не всегда.
+
+SPECULATIVE_MODEL="/assistant_model"
+# Draft/assistant model path или HF repo id.
+# Для native MTP или ngram может быть пустым.
+# Для draft_model обычно должна быть совместима с tokenizer target model.
+
+NUM_SPECULATIVE_TOKENS="4"
+# Сколько draft/speculative tokens предлагать за шаг.
+# Слишком большое значение может ухудшить latency при низком acceptance.
+
+DRAFT_TENSOR_PARALLEL_SIZE=""
+# Tensor parallel size для draft model.
+# Пусто — не добавлять в JSON.
+
+SPECULATIVE_MAX_MODEL_LEN=""
+# Max context для draft model.
+# Пусто — не добавлять в JSON.
+
+############################################
+# DTYPE / EXECUTION / QUANTIZATION
 ############################################
 DTYPE="auto"
 # Тип вычислений.
@@ -149,6 +228,12 @@ DTYPE="auto"
 # Иногда можно задавать явно, например half / bfloat16 / float16, если это
 # поддерживается моделью и нужно жёстко контролировать запуск.
 # Обычно auto — безопасный стартовый вариант.
+
+QUANTIZATION=""
+# Явно указать quantization backend.
+# Пусто — vLLM пытается определить формат из модели/чекпойнта.
+# Возможные значения зависят от версии: fp8, awq, gptq, bitsandbytes и т.д.
+# Для экспериментов с конкретным backend задавай явно.
 
 TRUST_REMOTE_CODE="0"
 # Разрешение выполнять custom code из model repository.
@@ -213,9 +298,10 @@ ARGS+=("--gpu-memory-utilization" "$GPU_MEMORY_UTILIZATION")
 ARGS+=("--max-num-seqs" "$MAX_NUM_SEQS")
 ARGS+=("--max-num-batched-tokens" "$MAX_NUM_BATCHED_TOKENS")
 
-# Qwen reasoning / template behavior
-ARGS+=("--reasoning-parser" "$REASONING_PARSER")
-ARGS+=("--default-chat-template-kwargs" "$DEFAULT_CHAT_TEMPLATE_KWARGS")
+# Reasoning
+if [[ -n "$REASONING_PARSER" ]]; then
+  ARGS+=("--reasoning-parser" "$REASONING_PARSER")
+fi
 
 ARGS+=("--enable-log-requests")
 ARGS+=("--enable-log-outputs")
@@ -242,8 +328,78 @@ if [[ "$LANGUAGE_MODEL_ONLY" == "1" ]]; then
   ARGS+=("--language-model-only")
 fi
 
+if [[ "$ENABLE_PROMPT_TOKENS_DETAILS" == "1" ]]; then
+  ARGS+=("--enable-prompt-tokens-details")
+fi
+
+# LoRA
+if [[ "$ENABLE_LORA" == "1" ]]; then
+  ARGS+=("--enable-lora")
+  ARGS+=("--max-loras" "$MAX_LORAS")
+  ARGS+=("--max-lora-rank" "$MAX_LORA_RANK")
+  ARGS+=("--lora-dtype" "$LORA_DTYPE")
+
+  if [[ "${#LORA_MODULES[@]}" -gt 0 ]]; then
+    ARGS+=("--lora-modules" "${LORA_MODULES[@]}")
+  fi
+
+  if [[ -n "$MAX_CPU_LORAS" ]]; then
+    ARGS+=("--max-cpu-loras" "$MAX_CPU_LORAS")
+  fi
+
+  if [[ "$FULLY_SHARDED_LORAS" == "1" ]]; then
+    ARGS+=("--fully-sharded-loras")
+  fi
+
+  if [[ -n "$LORA_TARGET_MODULES" ]]; then
+    read -r -a _lora_target_modules <<< "$LORA_TARGET_MODULES"
+    ARGS+=("--lora-target-modules" "${_lora_target_modules[@]}")
+  fi
+fi
+
+# Speculative decoding
+if [[ "$ENABLE_SPECULATIVE_DECODING" == "1" ]]; then
+  if [[ -n "$SPECULATIVE_CONFIG" ]]; then
+    ARGS+=("--speculative-config" "$SPECULATIVE_CONFIG")
+  else
+    _speculative_config="{"
+    _speculative_delimiter=""
+
+    if [[ -n "$SPECULATIVE_METHOD" ]]; then
+      _speculative_config+="${_speculative_delimiter}\"method\":\"$SPECULATIVE_METHOD\""
+      _speculative_delimiter=","
+    fi
+
+    if [[ -n "$SPECULATIVE_MODEL" ]]; then
+      _speculative_config+="${_speculative_delimiter}\"model\":\"$SPECULATIVE_MODEL\""
+      _speculative_delimiter=","
+    fi
+
+    if [[ -n "$NUM_SPECULATIVE_TOKENS" ]]; then
+      _speculative_config+="${_speculative_delimiter}\"num_speculative_tokens\":$NUM_SPECULATIVE_TOKENS"
+      _speculative_delimiter=","
+    fi
+
+    if [[ -n "$DRAFT_TENSOR_PARALLEL_SIZE" ]]; then
+      _speculative_config+="${_speculative_delimiter}\"draft_tensor_parallel_size\":$DRAFT_TENSOR_PARALLEL_SIZE"
+      _speculative_delimiter=","
+    fi
+
+    if [[ -n "$SPECULATIVE_MAX_MODEL_LEN" ]]; then
+      _speculative_config+="${_speculative_delimiter}\"max_model_len\":$SPECULATIVE_MAX_MODEL_LEN"
+    fi
+
+    _speculative_config+="}"
+    ARGS+=("--speculative-config" "$_speculative_config")
+  fi
+fi
+
 # Dtype / execution
 ARGS+=("--dtype" "$DTYPE")
+
+if [[ -n "$QUANTIZATION" ]]; then
+  ARGS+=("--quantization" "$QUANTIZATION")
+fi
 
 if [[ "$TRUST_REMOTE_CODE" == "1" ]]; then
   ARGS+=("--trust-remote-code")
@@ -273,17 +429,26 @@ echo "gpu mem utilization:     $GPU_MEMORY_UTILIZATION"
 echo "max num seqs:            $MAX_NUM_SEQS"
 echo "max batched tokens:      $MAX_NUM_BATCHED_TOKENS"
 echo
-echo "reasoning parser:        $REASONING_PARSER"
-echo "enable thinking:         $ENABLE_THINKING"
-echo "template kwargs:         $DEFAULT_CHAT_TEMPLATE_KWARGS"
+echo "reasoning parser:        $([[ -n "$REASONING_PARSER" ]] && echo "$REASONING_PARSER" || echo disabled)"
 echo
 echo "auto tool choice:        $([[ "$ENABLE_AUTO_TOOL_CHOICE" == "1" ]] && echo enabled || echo disabled)"
-echo "tool call parser:        $TOOL_CALL_PARSER"
+echo "tool call parser:        $([[ -n "$TOOL_CALL_PARSER" ]] && echo "$TOOL_CALL_PARSER" || echo disabled)"
 echo
 echo "prefix caching:          $([[ "$ENABLE_PREFIX_CACHING" == "1" ]] && echo enabled || echo disabled)"
 echo "language model only:     $([[ "$LANGUAGE_MODEL_ONLY" == "1" ]] && echo enabled || echo disabled)"
+echo "prompt token details:    $([[ "$ENABLE_PROMPT_TOKENS_DETAILS" == "1" ]] && echo enabled || echo disabled)"
+echo
+echo "lora:                    $([[ "$ENABLE_LORA" == "1" ]] && echo enabled || echo disabled)"
+echo "lora modules:            $([[ "${#LORA_MODULES[@]}" -gt 0 ]] && printf '%s ' "${LORA_MODULES[@]}" || echo disabled)"
+echo "max loras:               $MAX_LORAS"
+echo "max lora rank:           $MAX_LORA_RANK"
+echo
+echo "speculative decoding:    $([[ "$ENABLE_SPECULATIVE_DECODING" == "1" ]] && echo enabled || echo disabled)"
+echo "speculative method:      $([[ -n "$SPECULATIVE_METHOD" ]] && echo "$SPECULATIVE_METHOD" || echo auto)"
+echo "speculative model:       $([[ -n "$SPECULATIVE_MODEL" ]] && echo "$SPECULATIVE_MODEL" || echo none)"
 echo
 echo "dtype:                   $DTYPE"
+echo "quantization:            $([[ -n "$QUANTIZATION" ]] && echo "$QUANTIZATION" || echo auto/model)"
 echo "trust remote code:       $([[ "$TRUST_REMOTE_CODE" == "1" ]] && echo enabled || echo disabled)"
 echo
 echo "uvicorn log level:       $UVICORN_LOG_LEVEL"

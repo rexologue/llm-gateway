@@ -1,0 +1,667 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "Tempo usage",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "## Как пользоваться\n\nTempo — это не лог-дашборд. Он нужен, чтобы открыть конкретный request и увидеть waterfall: где потрачено время внутри gateway.\n\n**Нормальный сценарий:**\n\n1. В Loki находишь нужный лог по `session_id` или по `request_id`.\n2. Копируешь значение в переменную сверху: `session.id regex` или `request.id regex`.\n3. Нажимаешь Refresh.\n4. В таблице кликаешь по `Trace ID`.\n5. В открывшемся trace смотришь spans и attributes.\n\n**Что смотреть внутри trace:**\n\n- `llm.gateway.request` / `POST /v1/chat/completions` — общий gateway request.\n- `llm.backend.request` — HTTP-поход gateway в OpenAI-compatible backend.\n- `llm.stream_response` — streaming response, там важны `llm.ttft_sec`, `llm.chunk_count`, `llm.stream_duration_sec`.\n- `session.first_request=true` — первый запрос сессии, то есть session init path.\n- `llm.duration_sec` — полный duration gateway request.\n- `http.status_code`, `status=error`, `llm.cancelled=true` — ошибки/отмены.\n\n**Важно:** текст ответа модели (`assistant_text`) в Tempo не пишется. Его смотри в Loki dashboard.\n"
+      },
+      "description": "Tempo usage. Use this panel as an orientation or reference block for the dashboard.",
+      "datasource": {
+        "type": "tempo",
+        "uid": "${DS_TEMPO}"
+      }
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "1. Find traces by session_id / request_id",
+      "description": "Главная рабочая панель. Поставь сверху точный session_id или request_id, потом кликни Trace ID.",
+      "datasource": {
+        "type": "tempo",
+        "uid": "${DS_TEMPO}"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "countRows": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tempo",
+            "uid": "${DS_TEMPO}"
+          },
+          "queryType": "traceql",
+          "query": "{ resource.service.name =~ \"$service\" && span.http.route =~ \"$route\" && span.llm.model =~ \"$model\" && span.session.id =~ \"$session_id\" && span.request.id =~ \"$request_id\" }",
+          "limit": 100,
+          "tableType": "traces"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "2. Session init traces",
+      "description": "Первый запрос внутри сессии: session.first_request=true. Это trace для анализа session init latency.",
+      "datasource": {
+        "type": "tempo",
+        "uid": "${DS_TEMPO}"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 18
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "countRows": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tempo",
+            "uid": "${DS_TEMPO}"
+          },
+          "queryType": "traceql",
+          "query": "{ resource.service.name =~ \"$service\" && span.http.route =~ \"$route\" && span.llm.model =~ \"$model\" && span.session.first_request = true && span.session.id =~ \"$session_id\" }",
+          "limit": 100,
+          "tableType": "traces"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "3. Slow gateway requests",
+      "description": "Gateway requests с llm.duration_sec выше порога min llm.duration_sec.",
+      "datasource": {
+        "type": "tempo",
+        "uid": "${DS_TEMPO}"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 18
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "countRows": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tempo",
+            "uid": "${DS_TEMPO}"
+          },
+          "queryType": "traceql",
+          "query": "{ resource.service.name =~ \"$service\" && span.http.route =~ \"$route\" && span.llm.model =~ \"$model\" && span.llm.duration_sec > ${min_duration_sec} }",
+          "limit": 100,
+          "tableType": "traces"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "4. Streaming TTFT spans",
+      "description": "Streaming spans с llm.ttft_sec выше порога min llm.ttft_sec.",
+      "datasource": {
+        "type": "tempo",
+        "uid": "${DS_TEMPO}"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 28
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "countRows": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tempo",
+            "uid": "${DS_TEMPO}"
+          },
+          "queryType": "traceql",
+          "query": "{ resource.service.name =~ \"$service\" && name = \"llm.stream_response\" && span.llm.ttft_sec > ${min_ttft_sec} }",
+          "limit": 100,
+          "tableType": "traces"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "5. Backend call traces",
+      "description": "Find custom llm.backend.request spans for calls from the gateway to the OpenAI-compatible backend.",
+      "datasource": {
+        "type": "tempo",
+        "uid": "${DS_TEMPO}"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 28
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "countRows": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tempo",
+            "uid": "${DS_TEMPO}"
+          },
+          "queryType": "traceql",
+          "query": "{ resource.service.name =~ \"$service\" && name = \"llm.backend.request\" && span.http.route =~ \"$route\" && span.llm.model =~ \"$model\" }",
+          "limit": 100,
+          "tableType": "traces"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "6. Error traces",
+      "description": "Все traces со span status=error.",
+      "datasource": {
+        "type": "tempo",
+        "uid": "${DS_TEMPO}"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 8,
+        "x": 0,
+        "y": 38
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "countRows": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tempo",
+            "uid": "${DS_TEMPO}"
+          },
+          "queryType": "traceql",
+          "query": "{ resource.service.name =~ \"$service\" && status = error }",
+          "limit": 100,
+          "tableType": "traces"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "7. HTTP status >= 400",
+      "description": "Ошибочные HTTP статусы.",
+      "datasource": {
+        "type": "tempo",
+        "uid": "${DS_TEMPO}"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 8,
+        "x": 8,
+        "y": 38
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "countRows": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tempo",
+            "uid": "${DS_TEMPO}"
+          },
+          "queryType": "traceql",
+          "query": "{ resource.service.name =~ \"$service\" && span.http.status_code >= 400 }",
+          "limit": 100,
+          "tableType": "traces"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "table",
+      "title": "8. Cancelled requests",
+      "description": "Отменённые/оборванные requests/streams.",
+      "datasource": {
+        "type": "tempo",
+        "uid": "${DS_TEMPO}"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 8,
+        "x": 16,
+        "y": 38
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "countRows": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tempo",
+            "uid": "${DS_TEMPO}"
+          },
+          "queryType": "traceql",
+          "query": "{ resource.service.name =~ \"$service\" && span.llm.cancelled = true }",
+          "limit": 100,
+          "tableType": "traces"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "text",
+      "title": "Real span attributes emitted by gateway",
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 48
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "`request.id`, `session.id`, `session.present`, `session.first_request`, `http.route`, `http.method`, `http.status_code`, `llm.model`, `llm.stream`, `llm.message_count`, `llm.max_completion_tokens`, `llm.request.body_bytes`, `llm.response.body_bytes`, `llm.duration_sec`, `llm.cancelled`, `llm.ttft_sec`, `llm.chunk_count`, `llm.stream_duration_sec`.\n\nSpan names: `llm.gateway.request`, `llm.backend.request`, `llm.stream_response`, `llm.session.flow`, `valkey.operation`.\n"
+      },
+      "description": "Real span attributes emitted by gateway. Use this panel as an orientation or reference block for the dashboard.",
+      "datasource": {
+        "type": "tempo",
+        "uid": "${DS_TEMPO}"
+      }
+    }
+  ],
+  "preload": false,
+  "refresh": "30s",
+  "schemaVersion": 42,
+  "tags": [
+    "llm-gateway",
+    "gateway",
+    "tempo",
+    "otel",
+    "traceql"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "DS_TEMPO",
+        "type": "datasource",
+        "label": "Tempo datasource",
+        "query": "tempo",
+        "current": {
+          "selected": false,
+          "text": "Tempo",
+          "value": "tempo"
+        },
+        "hide": 0,
+        "refresh": 1
+      },
+      {
+        "name": "service",
+        "type": "textbox",
+        "label": "service.name",
+        "query": "llm-gateway",
+        "current": {
+          "text": "llm-gateway",
+          "value": "llm-gateway"
+        }
+      },
+      {
+        "name": "route",
+        "type": "textbox",
+        "label": "http.route regex",
+        "query": "/v1/chat/completions",
+        "current": {
+          "text": "/v1/chat/completions",
+          "value": "/v1/chat/completions"
+        }
+      },
+      {
+        "name": "model",
+        "type": "textbox",
+        "label": "llm.model regex",
+        "query": ".*",
+        "current": {
+          "text": ".*",
+          "value": ".*"
+        }
+      },
+      {
+        "name": "session_id",
+        "type": "textbox",
+        "label": "session.id regex",
+        "query": ".*",
+        "current": {
+          "text": ".*",
+          "value": ".*"
+        }
+      },
+      {
+        "name": "request_id",
+        "type": "textbox",
+        "label": "request.id regex",
+        "query": ".*",
+        "current": {
+          "text": ".*",
+          "value": ".*"
+        }
+      },
+      {
+        "name": "min_duration_sec",
+        "type": "custom",
+        "label": "min duration sec",
+        "query": "0,0.05,0.1,0.25,0.5,1,2,5,10,30,60",
+        "current": {
+          "text": "0.1",
+          "value": "0.1"
+        }
+      },
+      {
+        "name": "min_ttft_sec",
+        "type": "custom",
+        "label": "min ttft sec",
+        "query": "0,0.05,0.1,0.25,0.5,1,2,5,10",
+        "current": {
+          "text": "0",
+          "value": "0"
+        }
+      }
+    ]
+  },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "",
+  "title": "Gateway / Tempo Traces",
+  "uid": "llm-gateway-tempo-traces",
+  "version": 1,
+  "id": null
+}

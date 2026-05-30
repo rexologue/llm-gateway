@@ -1,127 +1,193 @@
 # Deployment Notes
 
-This document describes how to start the backend-specific gateway stacks and
-the separate observability stack. Metrics are documented in
-[METRICS.md](METRICS.md), and tracing is documented in [TRACES.md](TRACES.md).
+This document describes the split deployment layout:
 
-The project has two backend deployment entry points:
+- `deploy/llm` runs exactly one LLM backend stack: vLLM or SGLang.
+- `deploy/gateway` runs the OpenAI-compatible gateway and gateway observability
+  plumbing.
 
-- `deploy/docker-compose.vllm.yaml` - gateway plus a vLLM backend.
-- `deploy/docker-compose.sglang.yaml` - gateway plus an SGLang backend.
-
-The trace/Grafana stack is separate:
-
-- `observability/docker-compose.yaml` - Tempo, OpenTelemetry Collector, Grafana.
+Metrics are documented in [METRICS.md](METRICS.md), and tracing is documented
+in [TRACES.md](TRACES.md). Dashboard JSON exports are documented in
+[DASHBOARDS.md](DASHBOARDS.md).
 
 All paths in this document are relative to the repository root unless a command
 changes directory explicitly.
 
-Before starting a backend stack, create a local deployment env file:
+## LLM Stack
+
+The LLM stack contains:
+
+- the selected LLM engine;
+- Prometheus scraping backend metrics, node metrics, and DCGM GPU metrics;
+- Node exporter;
+- DCGM exporter.
+
+The gateway is intentionally not part of this compose stack.
+
+Create local LLM settings:
 
 ```bash
-cp deploy/.env.example deploy/.env
+cp deploy/llm/.env.example deploy/llm/.env
 ```
 
-Then edit `deploy/.env` and replace dummy values such as model paths, ports, image
-tags, and backend URLs for your host.
+Then edit `deploy/llm/.env`:
 
-Before starting the observability stack, create its local env file:
+- set the local model path;
+- choose image tags;
+- keep `LLM_HOST=127.0.0.1` and `LLM_HTTP_PORT=9900` unless you want the backend
+  API exposed differently.
 
-```bash
-cp observability/.env.example observability/.env
-```
-
-Then edit `observability/.env` and replace dummy values such as ports, image
-tags, and Grafana credentials for your host.
-
-## vLLM Variant
+Start vLLM:
 
 ```bash
-cd deploy
+cd deploy/llm
 docker compose -f docker-compose.vllm.yaml up -d
 ```
 
-This variant sets:
-
-```text
-GATEWAY_BACKEND_BASE_URL=http://vllm:8000
-```
-
-Prometheus uses `configs/prometheus-vllm.yml` and scrapes:
-
-- `llm-gateway:8080/gateway/metrics`
-- `vllm:8000/metrics`
-- node exporter
-- DCGM exporter
-
-The vLLM launch script is `deploy/serve_vllm.sh`.
-
-## SGLang Variant
+Start SGLang instead:
 
 ```bash
-cd deploy
+cd deploy/llm
 docker compose -f docker-compose.sglang.yaml up -d
 ```
 
-This variant sets:
+Only one backend variant should bind `127.0.0.1:9900` at a time.
+
+LLM-side useful URLs:
+
+- LLM OpenAI-compatible API: `http://127.0.0.1:9900`
+- LLM Prometheus: `http://0.0.0.0:9191`
+
+Prometheus configs:
+
+- vLLM: `deploy/llm/configs/prometheus-vllm.yaml`
+- SGLang: `deploy/llm/configs/prometheus-sglang.yaml`
+
+The launch scripts are:
+
+- `deploy/llm/serve_vllm.sh`
+- `deploy/llm/serve_sglang.sh`
+
+## Gateway Stack
+
+The gateway stack contains:
+
+- the FastAPI gateway;
+- Valkey for runtime session tracking and persisted chat inspection;
+- Prometheus scraping only gateway metrics;
+- Loki for gateway structured events;
+- OpenTelemetry Collector;
+- Tempo.
+
+The LLM backend is intentionally not part of this compose stack. By default, the
+gateway calls:
 
 ```text
-GATEWAY_BACKEND_BASE_URL=http://sglang:30000
+GATEWAY_BACKEND_BASE_URL=http://host.docker.gateway:9900
 ```
 
-Prometheus uses `configs/prometheus-sglang.yml` and scrapes:
+That matches the default LLM stack binding. Change it in
+`deploy/gateway/.env` when the backend lives elsewhere.
 
-- `llm-gateway:8080/gateway/metrics`
-- `sglang:30000/metrics`
-- node exporter
-- DCGM exporter
-
-The SGLang launch script is `deploy/serve_sglang.sh`.
-
-## Observability Stack
+Create local gateway settings:
 
 ```bash
-cd observability
+cp deploy/gateway/.env.example deploy/gateway/.env
+```
+
+Then start the gateway stack:
+
+```bash
+cd deploy/gateway
 docker compose -f docker-compose.yaml up -d
 ```
 
-The gateway variants send OTLP traces to `host.docker.internal:4317`, so this
-stack can run independently from the backend-specific compose file. Keep
-`GATEWAY_OTEL_ENABLED=true` and
-`GATEWAY_OTEL_EXPORTER_OTLP_ENDPOINT=http://host.docker.internal:4317` in
-`deploy/.env` when you want traces to appear in Tempo.
+Gateway-side useful URLs:
 
-Useful URLs:
+- gateway: `http://0.0.0.0:9090`
+- gateway health: `http://0.0.0.0:9090/health`
+- gateway metrics endpoint: `http://0.0.0.0:9090/gateway/metrics`
+- gateway Prometheus: `http://0.0.0.0:9091`
+- Loki: `http://0.0.0.0:9092`
+- Tempo: `http://0.0.0.0:3200`
+- OTLP/gRPC collector endpoint: `0.0.0.0:4317`
+- OTLP/HTTP collector endpoint: `0.0.0.0:4318`
 
-- gateway: `http://127.0.0.1:9090`
-- gateway metrics: `http://127.0.0.1:9090/gateway/metrics`
-- Prometheus: `http://127.0.0.1:9091`
-- Loki: `http://127.0.0.1:9092`
-- Grafana: `http://127.0.0.1:3000`
-- Tempo: `http://127.0.0.1:3200`
+Gateway configs:
 
-Grafana provisions the `Gateway Overview` dashboard at startup from
-`observability/configs/grafana/provisioning/dashboards/json/gateway-overview.json`.
-The dashboard uses only the Prometheus datasource and only metrics exported by
-the gateway itself.
+- Prometheus: `deploy/gateway/configs/prometheus-gateway.yaml`
+- Loki: `deploy/gateway/configs/loki-config.yaml`
+- Valkey: `deploy/gateway/configs/valkey.conf`
+- OpenTelemetry Collector: `deploy/gateway/configs/otel-collector.yaml`
+- Tempo: `deploy/gateway/configs/tempo.yaml`
+
+Grafana is not part of the compose stack. Import dashboard JSON files from
+`observability/dashboards/` into an existing Grafana or managed observability
+workspace when a visual UI is needed.
 
 ## Validation
 
+Render compose configs:
+
 ```bash
-cd deploy
-docker compose -f docker-compose.vllm.yaml config
-docker compose -f docker-compose.sglang.yaml config
-cd ..
-cd observability
-docker compose -f docker-compose.yaml config
+cd deploy/llm
+docker compose --env-file .env.example -f docker-compose.vllm.yaml config
+docker compose --env-file .env.example -f docker-compose.sglang.yaml config
+
+cd ../gateway
+docker compose --env-file .env.example -f docker-compose.yaml config
 ```
 
 Smoke checks after startup:
 
 ```bash
+curl -fsS http://127.0.0.1:9900/v1/models
 curl -fsS http://127.0.0.1:9090/health
 curl -fsS http://127.0.0.1:9090/gateway/metrics
 curl -fsS http://127.0.0.1:9090/v1/models
 ```
 
 `http://127.0.0.1:9090/metrics` is intentionally not served by the gateway.
+
+## Compose Smoke Tests
+
+The compose files include optional test-runner services under the `test`
+profile. They send one non-streaming OpenAI-compatible chat completion request
+and fail when the backend/gateway does not return a valid answer.
+
+Run direct backend smoke tests from `deploy/llm`:
+
+```bash
+docker compose \
+  --env-file .env \
+  -f docker-compose.vllm.yaml \
+  --profile test \
+  up --build --abort-on-container-exit --exit-code-from llm-smoke-tests
+```
+
+```bash
+docker compose \
+  --env-file .env \
+  -f docker-compose.sglang.yaml \
+  --profile test \
+  up --build --abort-on-container-exit --exit-code-from llm-smoke-tests
+```
+
+Run gateway smoke tests from `deploy/gateway` after the LLM stack is reachable
+through `GATEWAY_BACKEND_BASE_URL`:
+
+```bash
+docker compose \
+  --env-file .env \
+  -f docker-compose.yaml \
+  --profile test \
+  up --build --abort-on-container-exit --exit-code-from gateway-smoke-tests
+```
+
+The prompt, model, timeout, and optional API key are passed to the smoke test
+container through `env_file: .env`:
+
+- `SMOKE_MODEL`
+- `SMOKE_PROMPT`
+- `SMOKE_TIMEOUT_SEC`
+- `SMOKE_API_KEY`

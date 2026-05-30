@@ -3,11 +3,6 @@ global:
   evaluation_interval: 5s
 
 scrape_configs:
-  - job_name: gateway
-    metrics_path: /gateway/metrics
-    static_configs:
-      - targets: ["llm-gateway:8080"]
-
   - job_name: backend-vllm
     metrics_path: /metrics
     static_configs:
@@ -19,4 +14,4 @@ scrape_configs:
 
   - job_name: gpu
     static_configs:
-      - targets: ["llm-hardware-dcgm-exporter:9400"]
+      - targets: ["llm-dcgm-exporter:9400"]

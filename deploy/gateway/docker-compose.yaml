@@ -1,0 +1,163 @@
+services:
+  llm-gateway:
+    build:
+      context: ../../gateway
+
+    container_name: ${GATEWAY_CONTAINER_NAME}
+    restart: unless-stopped
+
+    depends_on:
+      llm-gateway-valkey:
+        condition: service_started
+      llm-gateway-loki:
+        condition: service_started
+      llm-gateway-otel-collector:
+        condition: service_started
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/v1/models', timeout=3).read()\"",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+    env_file:
+      - path: .env
+        required: false
+
+    ports:
+      - "${GATEWAY_HOST}:${GATEWAY_HTTP_PORT}:8080"
+
+    extra_hosts:
+      - "host.docker.gateway:host-gateway"
+      - "host.docker.internal:host-gateway"
+
+    networks:
+      - gateway
+
+
+  gateway-smoke-tests:
+    profiles: ["test"]
+    build:
+      context: ../..
+      dockerfile: deploy/tests/Dockerfile
+
+    depends_on:
+      llm-gateway:
+        condition: service_healthy
+
+    env_file:
+      - path: .env
+        required: false
+
+    environment:
+      BASE_URL: http://llm-gateway:8080
+
+    networks:
+      - gateway
+
+
+  llm-gateway-valkey:
+    image: ${GATEWAY_VALKEY_IMAGE}
+    container_name: ${GATEWAY_VALKEY_CONTAINER_NAME}
+    restart: unless-stopped
+    command: ["valkey-server", "/usr/local/etc/valkey/valkey.conf"]
+
+    volumes:
+      - ./configs/valkey.conf:/usr/local/etc/valkey/valkey.conf:ro
+      - llm-gateway-valkey-data:/data
+
+    networks:
+      - gateway
+
+
+  llm-gateway-loki:
+    image: ${GATEWAY_LOKI_IMAGE}
+    container_name: ${GATEWAY_LOKI_CONTAINER_NAME}
+    restart: unless-stopped
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+
+    ports:
+      - "${GATEWAY_HOST}:${GATEWAY_LOKI_HTTP_PORT}:3100"
+
+    volumes:
+      - ./configs/loki-config.yaml:/etc/loki/local-config.yaml:ro
+      - llm-gateway-loki-data:/loki
+
+    networks:
+      - gateway
+
+
+  llm-gateway-prometheus:
+    image: ${GATEWAY_PROMETHEUS_IMAGE}
+    container_name: ${GATEWAY_PROMETHEUS_CONTAINER_NAME}
+    restart: unless-stopped
+
+    ports:
+      - "${GATEWAY_HOST}:${GATEWAY_PROMETHEUS_HTTP_PORT}:9090"
+
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+
+    volumes:
+      - ./configs/prometheus-gateway.yaml:/etc/prometheus/prometheus.yml:ro
+      - llm-gateway-prometheus-data:/prometheus
+
+    networks:
+      - gateway
+
+
+  llm-gateway-tempo:
+    image: ${GATEWAY_TEMPO_IMAGE}
+    container_name: ${GATEWAY_TEMPO_CONTAINER_NAME}
+    restart: unless-stopped
+    command: ["-target=all", "-config.file=/etc/tempo/tempo.yaml"]
+
+    ports:
+      - "${GATEWAY_HOST}:${GATEWAY_TEMPO_HTTP_PORT}:3200"
+
+    volumes:
+      - ./configs/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - llm-gateway-tempo-data:/var/tempo
+
+    networks:
+      - gateway
+
+
+  llm-gateway-otel-collector:
+    image: ${GATEWAY_OTEL_COLLECTOR_IMAGE}
+    container_name: ${GATEWAY_OTEL_COLLECTOR_CONTAINER_NAME}
+    restart: unless-stopped
+    command: ["--config=/etc/otelcol/config.yaml"]
+
+    depends_on:
+      llm-gateway-tempo:
+        condition: service_started
+
+    ports:
+      - "${GATEWAY_HOST}:${GATEWAY_OTEL_GRPC_PORT}:4317"
+      - "${GATEWAY_HOST}:${GATEWAY_OTEL_HTTP_PORT}:4318"
+      - "${GATEWAY_HOST}:${GATEWAY_OTEL_HEALTH_PORT}:13133"
+
+    volumes:
+      - ./configs/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+
+    networks:
+      - gateway
+
+
+volumes:
+  llm-gateway-valkey-data:
+  llm-gateway-loki-data:
+  llm-gateway-prometheus-data:
+  llm-gateway-tempo-data:
+
+
+networks:
+  gateway:
+    driver: bridge

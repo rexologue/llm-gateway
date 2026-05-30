@@ -21,7 +21,7 @@ processors:
 
 exporters:
   otlp_grpc/tempo:
-    endpoint: tempo:4317
+    endpoint: llm-gateway-tempo:4317
     tls:
       insecure: true
 
