@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Warm up an OpenAI-compatible chat endpoint with optional session ids."""
+"""Warm up an OpenAI-compatible chat endpoint with unique request ids."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import asyncio
 import json
 import statistics
 import time
+import uuid
 from dataclasses import dataclass
 from typing import Any
 
@@ -60,16 +61,35 @@ def session_id_for_request(args: argparse.Namespace, idx: int) -> str | None:
     return args.session_id
 
 
+def request_id_prefix_for_run(args: argparse.Namespace) -> str:
+    """Return the request id prefix used by this script run."""
+
+    if args.request_id_prefix:
+        return args.request_id_prefix
+    return f"warmup-{uuid.uuid4().hex[:12]}"
+
+
+def request_id_for_request(prefix: str, idx: int) -> str:
+    """Return a unique request id for one request."""
+
+    return f"{prefix}-{idx}"
+
+
 def headers_for_request(
     base_headers: dict[str, str],
+    request_header: str,
+    request_id: str,
     session_header: str,
     session_id: str | None,
 ) -> dict[str, str]:
-    """Return request headers with an optional session id header."""
+    """Return request headers with request and optional session ids."""
 
     headers = dict(base_headers)
+    headers[request_header] = request_id
+
     if session_id:
         headers[session_header] = session_id
+
     return headers
 
 
@@ -163,6 +183,7 @@ async def run(args: argparse.Namespace) -> None:
         base_headers["Authorization"] = f"Bearer {args.api_key}"
 
     system_prompt = build_system_prompt(args.prompt_tokens)
+    request_id_prefix = request_id_prefix_for_run(args)
 
     limits = httpx.Limits(
         max_connections=args.concurrency,
@@ -182,9 +203,12 @@ async def run(args: argparse.Namespace) -> None:
         async def worker(i: int) -> None:
             """Run one bounded-concurrency request and collect its result."""
 
+            request_id = request_id_for_request(request_id_prefix, i)
             request_session_id = session_id_for_request(args, i)
             request_headers = headers_for_request(
                 base_headers,
+                args.request_header,
+                request_id,
                 args.session_header,
                 request_session_id,
             )
@@ -210,6 +234,8 @@ async def run(args: argparse.Namespace) -> None:
         print(f"Concurrency:     {args.concurrency}")
         print(f"Prompt tokens:   ~{args.prompt_tokens}")
         print(f"Max tokens:      {args.max_tokens}")
+        print(f"Request header:  {args.request_header}")
+        print(f"Request prefix:  {request_id_prefix}")
         print(f"Session header:  {args.session_header}")
         print(f"Session id:      {args.session_id or 'disabled'}")
         print(f"Session mode:    {args.session_id_mode if args.session_id else 'none'}")
@@ -295,6 +321,16 @@ def main() -> None:
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--timeout", type=float, default=300.0)
     parser.add_argument("--disable-thinking", action="store_true")
+    parser.add_argument(
+        "--request-id-prefix",
+        default="",
+        help="Base request id prefix. Empty generates a unique prefix for this run.",
+    )
+    parser.add_argument(
+        "--request-header",
+        default="X-Request-ID",
+        help="HTTP header used by the gateway for request id propagation.",
+    )
     parser.add_argument(
         "--session-id",
         default="",
