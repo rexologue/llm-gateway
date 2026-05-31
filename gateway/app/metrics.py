@@ -48,6 +48,7 @@ SESSION_E2E_LATENCY = Histogram(
         "method",
         "stream",
         "model",
+        "session_present",
         "session_first_request",
         "status_family",
         "result",
@@ -63,6 +64,7 @@ SESSION_TTFT = Histogram(
         "method",
         "stream",
         "model",
+        "session_present",
         "session_first_request",
         "status_family",
         "result",
@@ -223,6 +225,7 @@ class GatewayMetrics:
         if context.route == CHAT_COMPLETIONS_ROUTE:
             SESSION_E2E_LATENCY.labels(
                 **labels,
+                session_present=self.bool_label(context.session_id is not None),
                 session_first_request=self.bool_label(context.session_first_request),
             ).observe(e2e_sec)
 
@@ -251,6 +254,7 @@ class GatewayMetrics:
         if context.route == CHAT_COMPLETIONS_ROUTE:
             SESSION_TTFT.labels(
                 **labels,
+                session_present=self.bool_label(context.session_id is not None),
                 session_first_request=self.bool_label(context.session_first_request),
             ).observe(ttft_sec)
 

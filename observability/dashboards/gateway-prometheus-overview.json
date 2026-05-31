@@ -330,7 +330,7 @@
       "id": 5,
       "type": "stat",
       "title": "TTFT p95",
-      "description": "Current p95 time to first non-empty streamed backend chunk.",
+      "description": "Current p95 TTFT for successful /v1/chat/completions responses.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -361,7 +361,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_request_ttft_seconds_bucket{route=~\"$route\",model=~\"$model\",stream=~\"$stream\",result=~\"$result\",status_family=~\"$status_family\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_request_ttft_seconds_bucket{route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
           "legendFormat": "p95",
           "range": true,
           "editorMode": "code"
@@ -386,7 +386,7 @@
       "id": 6,
       "type": "stat",
       "title": "E2E p95",
-      "description": "Current p95 gateway end-to-end latency.",
+      "description": "Current p95 E2E latency for successful /v1/chat/completions responses.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -417,7 +417,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_request_e2e_seconds_bucket{route=~\"$route\",model=~\"$model\",stream=~\"$stream\",result=~\"$result\",status_family=~\"$status_family\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_request_e2e_seconds_bucket{route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
           "legendFormat": "p95",
           "range": true,
           "editorMode": "code"
@@ -442,7 +442,7 @@
       "id": 7,
       "type": "stat",
       "title": "Init TTFT p95",
-      "description": "Current p95 TTFT for first requests in a runtime session.",
+      "description": "Current p95 TTFT for successful first requests in real runtime sessions.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -473,7 +473,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_session_request_ttft_seconds_bucket{route=~\"$route\",model=~\"$model\",stream=~\"$stream\",session_first_request=\"true\",result=~\"$result\",status_family=~\"$status_family\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_session_request_ttft_seconds_bucket{route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",session_present=\"true\",session_first_request=\"true\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
           "legendFormat": "p95",
           "range": true,
           "editorMode": "code"
@@ -498,7 +498,7 @@
       "id": 8,
       "type": "stat",
       "title": "Init E2E p95",
-      "description": "Current p95 E2E latency for first requests in a runtime session.",
+      "description": "Current p95 E2E latency for successful first requests in real runtime sessions.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -529,7 +529,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_session_request_e2e_seconds_bucket{route=~\"$route\",model=~\"$model\",stream=~\"$stream\",session_first_request=\"true\",result=~\"$result\",status_family=~\"$status_family\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_session_request_e2e_seconds_bucket{route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",session_present=\"true\",session_first_request=\"true\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
           "legendFormat": "p95",
           "range": true,
           "editorMode": "code"
@@ -554,7 +554,7 @@
       "id": 9,
       "type": "stat",
       "title": "Init Share",
-      "description": "Share of chat-completion session requests classified as first request in a runtime session.",
+      "description": "Share of real session chat-completion requests classified as first request.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -585,7 +585,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "100 * sum(rate(gateway_session_requests_total{route=~\"$route\",stream=~\"$stream\",session_first_request=\"true\"}[$__rate_interval])) / clamp_min(sum(rate(gateway_session_requests_total{route=~\"$route\",stream=~\"$stream\"}[$__rate_interval])), 1e-9)",
+          "expr": "100 * sum(rate(gateway_session_requests_total{route=\"/v1/chat/completions\",stream=~\"$stream\",session_present=\"true\",session_first_request=\"true\"}[$__rate_interval])) / clamp_min(sum(rate(gateway_session_requests_total{route=\"/v1/chat/completions\",stream=~\"$stream\",session_present=\"true\"}[$__rate_interval])), 1e-9)",
           "legendFormat": "first share",
           "range": true,
           "editorMode": "code"
@@ -665,7 +665,7 @@
       "id": 12,
       "type": "timeseries",
       "title": "TTFT Quantiles",
-      "description": "Gateway TTFT quantiles for streamed responses with an observed first chunk.",
+      "description": "TTFT quantiles for successful streamed /v1/chat/completions responses.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -696,21 +696,21 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.50, sum by (le) (rate(gateway_request_ttft_seconds_bucket{route=~\"$route\",model=~\"$model\",stream=~\"$stream\",result=~\"$result\",status_family=~\"$status_family\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(gateway_request_ttft_seconds_bucket{route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
           "legendFormat": "p50",
           "range": true,
           "editorMode": "code"
         },
         {
           "refId": "B",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_request_ttft_seconds_bucket{route=~\"$route\",model=~\"$model\",stream=~\"$stream\",result=~\"$result\",status_family=~\"$status_family\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_request_ttft_seconds_bucket{route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
           "legendFormat": "p95",
           "range": true,
           "editorMode": "code"
         },
         {
           "refId": "C",
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(gateway_request_ttft_seconds_bucket{route=~\"$route\",model=~\"$model\",stream=~\"$stream\",result=~\"$result\",status_family=~\"$status_family\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(gateway_request_ttft_seconds_bucket{route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
           "legendFormat": "p99",
           "range": true,
           "editorMode": "code"
@@ -722,7 +722,7 @@
       "id": 13,
       "type": "timeseries",
       "title": "E2E Quantiles",
-      "description": "Gateway end-to-end latency quantiles for all accepted gateway requests.",
+      "description": "E2E latency quantiles for successful /v1/chat/completions responses.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -753,21 +753,21 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.50, sum by (le) (rate(gateway_request_e2e_seconds_bucket{route=~\"$route\",model=~\"$model\",stream=~\"$stream\",result=~\"$result\",status_family=~\"$status_family\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(gateway_request_e2e_seconds_bucket{route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
           "legendFormat": "p50",
           "range": true,
           "editorMode": "code"
         },
         {
           "refId": "B",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_request_e2e_seconds_bucket{route=~\"$route\",model=~\"$model\",stream=~\"$stream\",result=~\"$result\",status_family=~\"$status_family\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_request_e2e_seconds_bucket{route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
           "legendFormat": "p95",
           "range": true,
           "editorMode": "code"
         },
         {
           "refId": "C",
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(gateway_request_e2e_seconds_bucket{route=~\"$route\",model=~\"$model\",stream=~\"$stream\",result=~\"$result\",status_family=~\"$status_family\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(gateway_request_e2e_seconds_bucket{route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
           "legendFormat": "p99",
           "range": true,
           "editorMode": "code"
@@ -779,7 +779,7 @@
       "id": 14,
       "type": "timeseries",
       "title": "Init TTFT Quantiles",
-      "description": "TTFT quantiles for first requests in a runtime session.",
+      "description": "TTFT quantiles for successful first requests in real runtime sessions.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -810,21 +810,21 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.50, sum by (le) (rate(gateway_session_request_ttft_seconds_bucket{route=~\"$route\",model=~\"$model\",stream=~\"$stream\",session_first_request=\"true\",result=~\"$result\",status_family=~\"$status_family\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(gateway_session_request_ttft_seconds_bucket{route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",session_present=\"true\",session_first_request=\"true\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
           "legendFormat": "p50",
           "range": true,
           "editorMode": "code"
         },
         {
           "refId": "B",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_session_request_ttft_seconds_bucket{route=~\"$route\",model=~\"$model\",stream=~\"$stream\",session_first_request=\"true\",result=~\"$result\",status_family=~\"$status_family\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_session_request_ttft_seconds_bucket{route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",session_present=\"true\",session_first_request=\"true\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
           "legendFormat": "p95",
           "range": true,
           "editorMode": "code"
         },
         {
           "refId": "C",
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(gateway_session_request_ttft_seconds_bucket{route=~\"$route\",model=~\"$model\",stream=~\"$stream\",session_first_request=\"true\",result=~\"$result\",status_family=~\"$status_family\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(gateway_session_request_ttft_seconds_bucket{route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",session_present=\"true\",session_first_request=\"true\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
           "legendFormat": "p99",
           "range": true,
           "editorMode": "code"
@@ -836,7 +836,7 @@
       "id": 15,
       "type": "timeseries",
       "title": "Init E2E Quantiles",
-      "description": "E2E quantiles for first requests in a runtime session.",
+      "description": "E2E quantiles for successful first requests in real runtime sessions.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -867,21 +867,21 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.50, sum by (le) (rate(gateway_session_request_e2e_seconds_bucket{route=~\"$route\",model=~\"$model\",stream=~\"$stream\",session_first_request=\"true\",result=~\"$result\",status_family=~\"$status_family\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(gateway_session_request_e2e_seconds_bucket{route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",session_present=\"true\",session_first_request=\"true\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
           "legendFormat": "p50",
           "range": true,
           "editorMode": "code"
         },
         {
           "refId": "B",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_session_request_e2e_seconds_bucket{route=~\"$route\",model=~\"$model\",stream=~\"$stream\",session_first_request=\"true\",result=~\"$result\",status_family=~\"$status_family\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_session_request_e2e_seconds_bucket{route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",session_present=\"true\",session_first_request=\"true\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
           "legendFormat": "p95",
           "range": true,
           "editorMode": "code"
         },
         {
           "refId": "C",
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(gateway_session_request_e2e_seconds_bucket{route=~\"$route\",model=~\"$model\",stream=~\"$stream\",session_first_request=\"true\",result=~\"$result\",status_family=~\"$status_family\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(gateway_session_request_e2e_seconds_bucket{route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",session_present=\"true\",session_first_request=\"true\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
           "legendFormat": "p99",
           "range": true,
           "editorMode": "code"
@@ -944,7 +944,7 @@
         },
         {
           "refId": "B",
-          "expr": "sum(rate(gateway_session_requests_total{route=\"/v1/chat/completions\",stream=~\"$stream\",session_first_request=\"true\"}[$__rate_interval]))",
+          "expr": "sum(rate(gateway_session_requests_total{route=\"/v1/chat/completions\",stream=~\"$stream\",session_present=\"true\",session_first_request=\"true\"}[$__rate_interval]))",
           "legendFormat": "first=true",
           "range": true,
           "editorMode": "code"
@@ -956,7 +956,7 @@
       "id": 18,
       "type": "timeseries",
       "title": "TTFT: First vs Repeat",
-      "description": "Chat-completion TTFT p95 split by first-in-session classification.",
+      "description": "Successful session TTFT p95 split by first vs repeat classification.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -987,7 +987,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.95, sum by (le, session_first_request) (rate(gateway_session_request_ttft_seconds_bucket{route=~\"$route\",model=~\"$model\",stream=~\"$stream\",session_first_request=~\"$session_first_request\",result=~\"$result\",status_family=~\"$status_family\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le, session_first_request) (rate(gateway_session_request_ttft_seconds_bucket{route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",session_present=\"true\",session_first_request=~\"$session_first_request\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
           "legendFormat": "first={{session_first_request}} p95",
           "range": true,
           "editorMode": "code"
@@ -999,7 +999,7 @@
       "id": 19,
       "type": "timeseries",
       "title": "E2E: First vs Repeat",
-      "description": "Chat-completion E2E p95 split by first-in-session classification.",
+      "description": "Successful session E2E p95 split by first vs repeat classification.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -1030,7 +1030,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.95, sum by (le, session_first_request) (rate(gateway_session_request_e2e_seconds_bucket{route=~\"$route\",model=~\"$model\",stream=~\"$stream\",session_first_request=~\"$session_first_request\",result=~\"$result\",status_family=~\"$status_family\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le, session_first_request) (rate(gateway_session_request_e2e_seconds_bucket{route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",session_present=\"true\",session_first_request=~\"$session_first_request\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
           "legendFormat": "first={{session_first_request}} p95",
           "range": true,
           "editorMode": "code"
@@ -1289,6 +1289,6 @@
   ],
   "id": null,
   "schemaVersion": 39,
-  "version": 2,
+  "version": 3,
   "editable": true
 }

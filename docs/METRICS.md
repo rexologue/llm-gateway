@@ -58,17 +58,21 @@ per-request timing and span-level investigation.
 - End-to-end latency for `/v1/chat/completions` requests with session
   classification.
 - Recorded for ordinary and first-in-session chat completion requests. Use
-  `session_first_request=true` to isolate session-init behavior.
-- Labels: `route`, `method`, `stream`, `model`, `session_first_request`,
-  `status_family`, `result`.
+  `session_present=true,session_first_request=true` to isolate session-init
+  behavior. Use `session_present=true,session_first_request=false` for repeat
+  requests in known sessions.
+- Labels: `route`, `method`, `stream`, `model`, `session_present`,
+  `session_first_request`, `status_family`, `result`.
 
 `gateway_session_request_ttft_seconds`
 
 - TTFT for streamed `/v1/chat/completions` requests with session classification.
 - Recorded when a non-empty streamed backend chunk is observed. Use
-  `session_first_request=true` to isolate session-init TTFT.
-- Labels: `route`, `method`, `stream`, `model`, `session_first_request`,
-  `status_family`, `result`.
+  `session_present=true,session_first_request=true` to isolate session-init
+  TTFT. Use `session_present=true,session_first_request=false` for repeat
+  requests in known sessions.
+- Labels: `route`, `method`, `stream`, `model`, `session_present`,
+  `session_first_request`, `status_family`, `result`.
 
 `gateway_active_sessions`
 
