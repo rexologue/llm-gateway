@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Warm up an OpenAI-compatible chat endpoint with unique request ids."""
+"""Warm up an OpenAI-compatible chat endpoint with unique request/session ids."""
 
 from __future__ import annotations
 
@@ -51,28 +51,18 @@ def build_messages(system_prompt: str, i: int) -> list[dict[str, str]]:
     ]
 
 
-def session_id_for_request(args: argparse.Namespace, idx: int) -> str | None:
-    """Return the session id that should be sent for one request."""
+def id_prefix_for_run(prefix: str, name: str) -> str:
+    """Return an id prefix used by this script run."""
 
-    if not args.session_id:
-        return None
-    if args.session_id_mode == "per-request":
-        return f"{args.session_id}-{idx}"
-    return args.session_id
+    if prefix:
+        return prefix
+    return f"{name}-{uuid.uuid4().hex[:12]}"
 
 
-def request_id_prefix_for_run(args: argparse.Namespace) -> str:
-    """Return the request id prefix used by this script run."""
+def id_for_request(prefix: str, idx: int) -> str:
+    """Return a unique id for one request."""
 
-    if args.request_id_prefix:
-        return args.request_id_prefix
-    return f"warmup-{uuid.uuid4().hex[:12]}"
-
-
-def request_id_for_request(prefix: str, idx: int) -> str:
-    """Return a unique request id for one request."""
-
-    return f"{prefix}-{idx}"
+    return f"{prefix}-{idx}-{uuid.uuid4().hex[:8]}"
 
 
 def headers_for_request(
@@ -80,16 +70,13 @@ def headers_for_request(
     request_header: str,
     request_id: str,
     session_header: str,
-    session_id: str | None,
+    session_id: str,
 ) -> dict[str, str]:
-    """Return request headers with request and optional session ids."""
+    """Return request headers with request and session ids."""
 
     headers = dict(base_headers)
     headers[request_header] = request_id
-
-    if session_id:
-        headers[session_header] = session_id
-
+    headers[session_header] = session_id
     return headers
 
 
@@ -183,7 +170,8 @@ async def run(args: argparse.Namespace) -> None:
         base_headers["Authorization"] = f"Bearer {args.api_key}"
 
     system_prompt = build_system_prompt(args.prompt_tokens)
-    request_id_prefix = request_id_prefix_for_run(args)
+    request_id_prefix = id_prefix_for_run(args.request_id_prefix, "warmup-request")
+    session_id_prefix = id_prefix_for_run(args.session_id_prefix, "warmup-session")
 
     limits = httpx.Limits(
         max_connections=args.concurrency,
@@ -203,8 +191,8 @@ async def run(args: argparse.Namespace) -> None:
         async def worker(i: int) -> None:
             """Run one bounded-concurrency request and collect its result."""
 
-            request_id = request_id_for_request(request_id_prefix, i)
-            request_session_id = session_id_for_request(args, i)
+            request_id = id_for_request(request_id_prefix, i)
+            request_session_id = id_for_request(session_id_prefix, i)
             request_headers = headers_for_request(
                 base_headers,
                 args.request_header,
@@ -237,8 +225,7 @@ async def run(args: argparse.Namespace) -> None:
         print(f"Request header:  {args.request_header}")
         print(f"Request prefix:  {request_id_prefix}")
         print(f"Session header:  {args.session_header}")
-        print(f"Session id:      {args.session_id or 'disabled'}")
-        print(f"Session mode:    {args.session_id_mode if args.session_id else 'none'}")
+        print(f"Session prefix:  {session_id_prefix}")
         print()
 
         started = time.perf_counter()
@@ -332,15 +319,9 @@ def main() -> None:
         help="HTTP header used by the gateway for request id propagation.",
     )
     parser.add_argument(
-        "--session-id",
+        "--session-id-prefix",
         default="",
-        help="Base session id to send in the session header. Empty disables session headers.",
-    )
-    parser.add_argument(
-        "--session-id-mode",
-        choices=("fixed", "per-request"),
-        default="fixed",
-        help="Use one shared session id or append the request index for one session per request.",
+        help="Base session id prefix. Empty generates a unique prefix for this run.",
     )
     parser.add_argument(
         "--session-header",

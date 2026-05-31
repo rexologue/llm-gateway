@@ -3864,7 +3864,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "100 * (1 - irate(node_cpu_seconds_total{job=\"node\", instance=\"host.docker.internal:9100\", mode=\"idle\"}[10s]))",
+          "expr": "100 * (1 - irate(node_cpu_seconds_total{instance=~\"$node_instance\",mode=\"idle\"}[10s]))",
           "legendFormat": "cpu{{cpu}}",
           "range": true,
           "refId": "A"
@@ -3872,7 +3872,7 @@
       ],
       "title": "Per vCPU load",
       "type": "timeseries",
-      "description": "Per vCPU load. Main query: 100 * (1 - irate(node_cpu_seconds_total{job=\"node\", instance=\"host.docker.internal:9100\", mode=\"idle\"}[10s]))"
+      "description": "Per vCPU load. Main query: 100 * (1 - irate(node_cpu_seconds_total{instance=~\"$node_instance\",mode=\"idle\"}[10s]))"
     },
     {
       "collapsed": true,

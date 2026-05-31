@@ -32,10 +32,7 @@ existing Grafana instance or another managed observability workspace.
 
 - vLLM backend, DCGM, and node-exporter dashboard.
 - Intended for the LLM-side Prometheus stack in `deploy/llm`.
-
-`backend-vllm-prometheus-overview-vcpu.json`
-
-- vLLM backend dashboard variant with per-vCPU oriented panels.
+- Includes the per-vCPU host load panel.
 
 `backend-sglang-prometheus-overview.json`
 
