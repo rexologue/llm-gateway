@@ -103,6 +103,14 @@ REASONING_PARSER=""
 # Значение зависит от модели и версии vLLM; перед включением проверь
 # актуальный список parser'ов в документации vLLM.
 
+DISABLE_THINKING="1"
+# Отключает thinking на уровне server-side chat template defaults.
+# Добавляет --default-chat-template-kwargs '{"enable_thinking": false}'.
+# Это важно для моделей/шаблонов, где per-request параметры могут не доходить
+# или где нужно железно запретить thinking по умолчанию на backend стороне.
+# 1 — отключать thinking по умолчанию
+# 0 — не добавлять default chat template kwargs
+
 ############################################
 # TOOL CALLING
 ############################################
@@ -303,6 +311,10 @@ if [[ -n "$REASONING_PARSER" ]]; then
   ARGS+=("--reasoning-parser" "$REASONING_PARSER")
 fi
 
+if [[ "$DISABLE_THINKING" == "1" ]]; then
+  ARGS+=("--default-chat-template-kwargs" '{"enable_thinking": false}')
+fi
+
 ARGS+=("--enable-log-requests")
 ARGS+=("--enable-log-outputs")
 ARGS+=("--enable-request-id-headers")
@@ -430,6 +442,7 @@ echo "max num seqs:            $MAX_NUM_SEQS"
 echo "max batched tokens:      $MAX_NUM_BATCHED_TOKENS"
 echo
 echo "reasoning parser:        $([[ -n "$REASONING_PARSER" ]] && echo "$REASONING_PARSER" || echo disabled)"
+echo "thinking disabled:       $([[ "$DISABLE_THINKING" == "1" ]] && echo enabled || echo disabled)"
 echo
 echo "auto tool choice:        $([[ "$ENABLE_AUTO_TOOL_CHOICE" == "1" ]] && echo enabled || echo disabled)"
 echo "tool call parser:        $([[ -n "$TOOL_CALL_PARSER" ]] && echo "$TOOL_CALL_PARSER" || echo disabled)"

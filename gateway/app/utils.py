@@ -66,9 +66,7 @@ def apply_generic_payload_overrides(
 
 
 def disable_thinking(payload: dict[str, Any]) -> None:
-    """Set common backend knobs that disable thinking in chat templates."""
-
-    payload["enable_thinking"] = False
+    """Set the common vLLM/SGLang chat-template knob that disables thinking."""
 
     chat_template_kwargs = payload.get("chat_template_kwargs")
     if isinstance(chat_template_kwargs, dict):
