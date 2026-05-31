@@ -41,7 +41,7 @@ def apply_chat_payload_overrides(
         patched.pop("max_tokens", None)
 
     if forced_thinking_disabled:
-        patched["enable_thinking"] = False
+        disable_thinking(patched)
 
     raw_body, decoded_body = encode_payload(patched)
 
@@ -58,11 +58,27 @@ def apply_generic_payload_overrides(
     patched = dict(payload)
 
     if forced_thinking_disabled:
-        patched["enable_thinking"] = False
+        disable_thinking(patched)
 
     raw_body, decoded_body = encode_payload(patched)
 
     return patched, raw_body, decoded_body
+
+
+def disable_thinking(payload: dict[str, Any]) -> None:
+    """Set common backend knobs that disable thinking in chat templates."""
+
+    payload["enable_thinking"] = False
+
+    chat_template_kwargs = payload.get("chat_template_kwargs")
+    if isinstance(chat_template_kwargs, dict):
+        payload["chat_template_kwargs"] = {
+            **chat_template_kwargs,
+            "enable_thinking": False,
+        }
+        return
+
+    payload["chat_template_kwargs"] = {"enable_thinking": False}
 
 
 ###################
