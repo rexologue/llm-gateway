@@ -128,6 +128,7 @@ class GatewayLokiLogger:
                     "body_bytes": len(context.raw_body),
                     **self._request_header_summary(context.headers_in),
                     "tool_call_count": self._tool_call_count(context.payload),
+                    "messages_count": self._messages_count(context.payload),
                     "request_json": self._request_json(context.route, context.payload),
                 }
             )
@@ -403,6 +404,20 @@ class GatewayLokiLogger:
                 count += sum(1 for tool_call in tool_calls if isinstance(tool_call, dict))
 
         return count
+
+
+    @staticmethod
+    def _messages_count(payload: Any | None) -> int | None:
+        """Count chat messages in a request payload."""
+
+        if not isinstance(payload, dict):
+            return None
+
+        messages = payload.get("messages")
+        if not isinstance(messages, list):
+            return None
+
+        return len(messages)
 
 
     @staticmethod

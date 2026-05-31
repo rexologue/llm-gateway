@@ -26,7 +26,7 @@
         "type": "loki",
         "uid": "${DS_LOKI}"
       },
-      "description": "Request-generation events from Loki. Shows request metadata, sanitized request JSON, session classification, and tool call count without message bodies.",
+      "description": "Request-generation events from Loki. Shows request id, session-first flag, message count, and sampling parameters extracted from sanitized request_json.",
       "fieldConfig": {
         "defaults": {},
         "overrides": []
@@ -56,7 +56,7 @@
             "type": "loki",
             "uid": "${DS_LOKI}"
           },
-          "expr": "{app=~\"$app\", bucket=\"request_generation\", route=~\"$route\"} | json | session_id=~\"$session_id\" | request_id=~\"$request_id\" | line_format \"ts={{.ts}} request_id={{.request_id}} session_id={{.session_id}} first={{.session_first_request}} route={{.route}} model={{.request_json_model}} stream={{.stream}} tools={{.tool_call_count}} body_bytes={{.body_bytes}} request={{.request_json}}\""
+          "expr": "{app=~\"$app\", bucket=\"request_generation\", route=~\"$route\"} | json | session_id=~\"$session_id\" | request_id=~\"$request_id\" | line_format \"request_id={{.request_id}} first={{.session_first_request}} messages_cnt={{.messages_count}} model={{.request_json_model}} max_tokens={{.request_json_max_tokens}} max_completion_tokens={{.request_json_max_completion_tokens}} n={{.request_json_n}} temperature={{.request_json_temperature}} top_p={{.request_json_top_p}} top_k={{.request_json_top_k}} min_p={{.request_json_min_p}} seed={{.request_json_seed}} stop={{.request_json_stop}} presence_penalty={{.request_json_presence_penalty}} frequency_penalty={{.request_json_frequency_penalty}} repetition_penalty={{.request_json_repetition_penalty}} logprobs={{.request_json_logprobs}} top_logprobs={{.request_json_top_logprobs}}\""
         }
       ],
       "title": "Generation Requests",
@@ -97,7 +97,7 @@
             "type": "loki",
             "uid": "${DS_LOKI}"
           },
-          "expr": "{app=~\"$app\", bucket=\"response_generation\", route=~\"$route\"} | json | session_id=~\"$session_id\" | request_id=~\"$request_id\" | line_format \"ts={{.ts}} request_id={{.request_id}} session_id={{.session_id}} first={{.session_first_request}} route={{.route}} status={{.status_code}} level={{.level}} e2e={{.e2e_sec}} ttft={{.ttft_sec}} stream={{.stream}} body_bytes={{.body_bytes}} assistant_text={{.assistant_text}}\""
+          "expr": "{app=~\"$app\", bucket=\"response_generation\", route=~\"$route\"} | json | session_id=~\"$session_id\" | request_id=~\"$request_id\" | line_format \"request_id={{.request_id}} first={{.session_first_request}} status={{.status_code}} level={{.level}} e2e={{.e2e_sec}} ttft={{.ttft_sec}} stream={{.stream}} body_bytes={{.body_bytes}} assistant_text={{.assistant_text}}\""
         }
       ],
       "title": "Generation Responses",
@@ -106,8 +106,8 @@
     {
       "id": 3,
       "type": "logs",
-      "title": "Gateway Errors and Warning Responses",
-      "description": "Terminal gateway_error events and warning/error response events. Use this to jump from request_id/session_id into failed gateway or backend flows.",
+      "title": "Gateway Errors and Warnings",
+      "description": "Warning and error Loki events grouped in one place. Use request_id to jump into failed gateway or backend flows.",
       "datasource": {
         "type": "loki",
         "uid": "${DS_LOKI}"
@@ -125,7 +125,7 @@
             "type": "loki",
             "uid": "${DS_LOKI}"
           },
-          "expr": "{app=~\"$app\", route=~\"$route\"} | json | session_id=~\"$session_id\" | request_id=~\"$request_id\" | level=~\"warn|error\" | line_format \"ts={{.ts}} bucket={{.bucket}} level={{.level}} request_id={{.request_id}} session_id={{.session_id}} route={{.route}} status={{.status_code}} warn_reason={{.warn_reason}} error={{.error_type}} {{.error_message}}\""
+          "expr": "{app=~\"$app\", route=~\"$route\"} | json | session_id=~\"$session_id\" | request_id=~\"$request_id\" | level=~\"warn|error\" | line_format \"bucket={{.bucket}} level={{.level}} request_id={{.request_id}} route={{.route}} status={{.status_code}} warn_reason={{.warn_reason}} error={{.error_type}} {{.error_message}}\""
         }
       ],
       "options": {
@@ -228,6 +228,6 @@
   "timezone": "",
   "title": "Gateway / Loki Events",
   "uid": "llm-gateway-loki-events",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }
