@@ -168,6 +168,7 @@ def create_router() -> APIRouter:
         payload = parse_json_maybe(decoded_body)
         session_first_request = False
         messages_saved = False
+        fallback_params = None
 
         with tracer.start_as_current_span(
             SPAN_SESSION_FLOW,
@@ -186,11 +187,19 @@ def create_router() -> APIRouter:
                 if (
                     settings.forced_max_completion_tokens is not None
                     or settings.forced_thinking_disabled
+                    or settings.enable_sampling_fallback_override
                 ):
-                    payload, raw_body, _decoded_body = apply_chat_payload_overrides(
-                        payload,
-                        forced_max_completion_tokens=settings.forced_max_completion_tokens,
-                        forced_thinking_disabled=settings.forced_thinking_disabled,
+                    payload, raw_body, _decoded_body, fallback_params = (
+                        apply_chat_payload_overrides(
+                            payload,
+                            forced_max_completion_tokens=(
+                                settings.forced_max_completion_tokens
+                            ),
+                            forced_thinking_disabled=settings.forced_thinking_disabled,
+                            enable_sampling_fallback_override=(
+                                settings.enable_sampling_fallback_override
+                            ),
+                        )
                     )
 
                 messages_saved = await state.session_store.save_messages(
@@ -216,6 +225,7 @@ def create_router() -> APIRouter:
             headers_in=headers_in,
             raw_body=raw_body,
             payload=payload,
+            fallback_params=fallback_params,
         )
 
         # Branch: malformed chat completion request. We get here when the
@@ -251,6 +261,7 @@ def create_router() -> APIRouter:
         log_context.stream = stream
         log_context.raw_body = raw_body
         log_context.payload = payload
+        log_context.fallback_params = fallback_params
 
         await log_context.request()
         metrics_context = state.metrics.context(

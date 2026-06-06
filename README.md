@@ -107,6 +107,7 @@ Generic proxying also supports routes such as:
 | `GATEWAY_BACKEND_BASE_URL` | OpenAI-compatible backend base URL | `http://host.docker.gateway:9900` |
 | `GATEWAY_FORCED_MAX_COMPLETION_TOKENS` | Optional forced `max_completion_tokens` on chat requests | unset |
 | `GATEWAY_FORCED_THINKING_DISABLED` | Force `chat_template_kwargs.enable_thinking=false` on JSON request payloads | `false` |
+| `GATEWAY_ENABLE_SAMPLING_FALLBACK_OVERRIDE` | Replace invalid chat sampling parameters with safe fallback values | `false` |
 | `GATEWAY_LOKI_APP_NAME` | Loki `app` label | `llm-gateway` |
 | `GATEWAY_LOKI_ENABLED` | Enable Loki event delivery | `true` |
 | `GATEWAY_LOKI_PUSH_URL` | Loki Push API URL | `http://llm-gateway-loki:3100/loki/api/v1/push` |
@@ -137,7 +138,8 @@ Loki event buckets:
 Request and response events include `request_id`, optional `session_id`,
 `session_first_request`, `trace_id`, and `span_id`.
 Request generation events include sanitized `request_json` without message
-bodies and `tool_call_count`.
+bodies, `tool_call_count`, and `fallback_params` when invalid sampling values
+were replaced.
 Generation response events keep the backend payload, `assistant_text`, timing,
 status, and size fields.
 Streaming generation responses are stored as a valid JSON object containing ordered SSE events.

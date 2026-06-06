@@ -26,6 +26,7 @@ class LokiRequestContext:
     headers_in: Mapping[str, str]
     raw_body: bytes
     payload: Any | None
+    fallback_params: Mapping[str, Any] | None
 
 
     async def request(self) -> None:
@@ -96,6 +97,7 @@ class GatewayLokiLogger:
         headers_in: Mapping[str, str],
         raw_body: bytes,
         payload: Any | None,
+        fallback_params: Mapping[str, Any] | None = None,
     ) -> LokiRequestContext:
         """Bind repeated request metadata once for later request/response/error logs."""
 
@@ -110,6 +112,7 @@ class GatewayLokiLogger:
             headers_in=headers_in,
             raw_body=raw_body,
             payload=payload,
+            fallback_params=fallback_params,
         )
 
 
@@ -129,6 +132,7 @@ class GatewayLokiLogger:
                     **self._request_header_summary(context.headers_in),
                     "tool_call_count": self._tool_call_count(context.payload),
                     "messages_count": self._messages_count(context.payload),
+                    "fallback_params": context.fallback_params,
                     "request_json": self._request_json(context.route, context.payload),
                 }
             )

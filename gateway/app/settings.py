@@ -54,6 +54,7 @@ class Settings:
     backend_base_url: str
     forced_max_completion_tokens: int | None
     forced_thinking_disabled: bool
+    enable_sampling_fallback_override: bool
 
     # Gateway HTTP client limits.
     connect_timeout: float
@@ -115,6 +116,10 @@ class Settings:
             ),
             forced_thinking_disabled=_get_bool_env(
                 "GATEWAY_FORCED_THINKING_DISABLED",
+                False,
+            ),
+            enable_sampling_fallback_override=_get_bool_env(
+                "GATEWAY_ENABLE_SAMPLING_FALLBACK_OVERRIDE",
                 False,
             ),
 
