@@ -6,6 +6,13 @@ This document describes the split deployment layout:
 - `deploy/gateway` runs the OpenAI-compatible gateway and gateway observability
   plumbing.
 
+The recommended deployment flow is backend-first:
+
+1. Start the selected backend stack.
+2. Validate the backend directly.
+3. Start the gateway stack.
+4. Validate the gateway path against the already checked backend.
+
 Metrics are documented in [METRICS.md](METRICS.md), and tracing is documented
 in [TRACES.md](TRACES.md). Dashboard JSON exports are documented in
 [DASHBOARDS.md](DASHBOARDS.md).
@@ -37,18 +44,20 @@ Then edit `deploy/llm/.env`:
 - keep `LLM_HOST=127.0.0.1` and `LLM_HTTP_PORT=9900` unless you want the backend
   API exposed differently.
 
-Start vLLM:
+Start vLLM and run the direct backend smoke test:
 
 ```bash
 cd deploy/llm
-docker compose -f docker-compose.vllm.yaml up -d
+docker compose --env-file .env -f docker-compose.vllm.yaml up -d --build
+docker compose --env-file .env -f docker-compose.vllm.yaml --profile test run --rm llm-smoke-tests
 ```
 
-Start SGLang instead:
+Start SGLang instead and run the direct backend smoke test:
 
 ```bash
 cd deploy/llm
-docker compose -f docker-compose.sglang.yaml up -d
+docker compose --env-file .env -f docker-compose.sglang.yaml up -d --build
+docker compose --env-file .env -f docker-compose.sglang.yaml --profile test run --rm llm-smoke-tests
 ```
 
 Only one backend variant should bind `127.0.0.1:9900` at a time.
@@ -95,11 +104,12 @@ Create local gateway settings:
 cp deploy/gateway/.env.example deploy/gateway/.env
 ```
 
-Then start the gateway stack:
+Then start the gateway stack and run the gateway smoke test:
 
 ```bash
 cd deploy/gateway
-docker compose -f docker-compose.yaml up -d
+docker compose --env-file .env -f docker-compose.yaml up -d --build
+docker compose --env-file .env -f docker-compose.yaml --profile test run --rm gateway-smoke-tests
 ```
 
 Gateway-side useful URLs:
@@ -152,13 +162,18 @@ curl -fsS http://127.0.0.1:9090/v1/models
 
 The compose files include optional test-runner services under the `test`
 profile. They send one non-streaming OpenAI-compatible chat completion request
-and fail when the backend/gateway does not return a valid answer.
+and fail when the backend/gateway does not return a valid answer. When
+`SMOKE_CHECK_TOOLS=true`, they also send a forced OpenAI-compatible tool-call
+request and fail unless the response contains valid `tool_calls` with JSON
+function arguments.
 
 The normal workflow is:
 
-1. Start the stack in detached mode.
-2. Run the smoke-test service as a one-off container.
-3. Keep the stack running after the test container exits.
+1. Start the backend stack in detached mode.
+2. Run the backend smoke-test service as a one-off container.
+3. Start the gateway stack in detached mode.
+4. Run the gateway smoke-test service as a one-off container.
+5. Keep the stacks running after the test containers exit.
 
 Run direct backend smoke tests from `deploy/llm`.
 
@@ -237,3 +252,8 @@ container through `env_file: .env`:
 - `SMOKE_PROMPT`
 - `SMOKE_TIMEOUT_SEC`
 - `SMOKE_API_KEY`
+- `SMOKE_CHECK_TOOLS`
+
+Set `SMOKE_CHECK_TOOLS=true` only when tool calling is part of the expected
+runtime contract and the selected backend was launched with tool-call support.
+Leave it `false` for deployments that only need plain chat completions.

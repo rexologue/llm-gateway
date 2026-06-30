@@ -34,7 +34,7 @@ Detailed references:
 - [Traces](docs/TRACES.md)
 - [Dashboards](docs/DASHBOARDS.md)
 
-## Running
+## Recommended Deployment
 
 Create deployment settings first:
 
@@ -46,31 +46,39 @@ cp deploy/gateway/.env.example deploy/gateway/.env
 # edit deploy/gateway/.env
 ```
 
-vLLM variant:
+Start one backend variant first, then validate it directly.
+
+vLLM:
 
 ```bash
 cd deploy/llm
-docker compose -f docker-compose.vllm.yaml up -d
+docker compose --env-file .env -f docker-compose.vllm.yaml up -d --build
+docker compose --env-file .env -f docker-compose.vllm.yaml --profile test run --rm llm-smoke-tests
 ```
 
-SGLang variant:
+SGLang:
 
 ```bash
 cd deploy/llm
-docker compose -f docker-compose.sglang.yaml up -d
+docker compose --env-file .env -f docker-compose.sglang.yaml up -d --build
+docker compose --env-file .env -f docker-compose.sglang.yaml --profile test run --rm llm-smoke-tests
 ```
 
-Gateway stack:
+Only after the backend smoke test passes, start the gateway stack and validate
+the same request path through the gateway:
 
 ```bash
 cd deploy/gateway
-docker compose -f docker-compose.yaml up -d
+docker compose --env-file .env -f docker-compose.yaml up -d --build
+docker compose --env-file .env -f docker-compose.yaml --profile test run --rm gateway-smoke-tests
 ```
 
-Optional smoke tests are available through the compose `test` profile. They send
-one chat completion request directly to the selected backend or through the
-gateway and return the test container exit code. See [Deployment](docs/DEPLOY.md)
-for commands.
+The smoke tests always send one regular non-streaming chat completion request.
+When tool calling is required for the deployment, set `SMOKE_CHECK_TOOLS=true`
+in `deploy/llm/.env` and `deploy/gateway/.env`; the test runner will also send
+a tool-call request and fail if the selected backend or the gateway path cannot
+return OpenAI-compatible `tool_calls`. Leave it `false` when tools are not part
+of the expected runtime contract. See [Deployment](docs/DEPLOY.md) for details.
 
 Default ports:
 
