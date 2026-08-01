@@ -95,6 +95,11 @@ ACTIVE_SESSION_GAUGE = Gauge(
     "Current number of runtime session keys in Valkey DB 0",
 )
 
+INFLIGHT_REQUESTS_GAUGE = Gauge(
+    "gateway_inflight_requests",
+    "Chat completion requests currently in flight (post-validation, pre-completion)",
+)
+
 
 @dataclass(frozen=True, slots=True)
 class MetricsRequestContext:
@@ -107,6 +112,7 @@ class MetricsRequestContext:
     model: str
     session_id: str | None
     session_first_request: bool
+    track_inflight: bool = False
 
 
     def request(self) -> None:
@@ -161,6 +167,7 @@ class GatewayMetrics:
         model: str = "unknown",
         session_id: str | None = None,
         session_first_request: bool = False,
+        track_inflight: bool = False,
     ) -> MetricsRequestContext:
         """Bind repeated metric labels for one logical gateway request."""
 
@@ -172,11 +179,15 @@ class GatewayMetrics:
             model=model,
             session_id=session_id,
             session_first_request=session_first_request,
+            track_inflight=track_inflight,
         )
 
 
     def record_request(self, context: MetricsRequestContext) -> None:
         """Increment request counters for one accepted gateway request."""
+
+        if context.track_inflight:
+            INFLIGHT_REQUESTS_GAUGE.inc()
 
         REQUEST_COUNTER.labels(
             route=context.route,
@@ -203,6 +214,9 @@ class GatewayMetrics:
         e2e_sec: float,
     ) -> None:
         """Record terminal response counters and E2E histograms."""
+
+        if context.track_inflight:
+            INFLIGHT_REQUESTS_GAUGE.dec()
 
         labels = self.outcome_labels(
             route=context.route,

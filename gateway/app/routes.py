@@ -271,6 +271,7 @@ def create_router() -> APIRouter:
             model=model,
             session_id=session_id,
             session_first_request=session_first_request,
+            track_inflight=True,
         )
         metrics_context.request()
 

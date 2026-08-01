@@ -631,7 +631,7 @@
       "gridPos": {
         "x": 0,
         "y": 6,
-        "w": 8,
+        "w": 6,
         "h": 8
       },
       "fieldConfig": {
@@ -662,6 +662,48 @@
       "options": {}
     },
     {
+      "id": 27,
+      "type": "timeseries",
+      "title": "In-Flight Requests",
+      "description": "Chat completion requests currently being processed (post-validation, pre-completion), summed across gateway replicas. Approximates concurrent LLM calls in flight.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 6,
+        "w": 6,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(gateway_inflight_requests)",
+          "legendFormat": "in-flight",
+          "range": true,
+          "editorMode": "code"
+        }
+      ],
+      "options": {}
+    },
+    {
       "id": 12,
       "type": "timeseries",
       "title": "TTFT Quantiles",
@@ -671,9 +713,9 @@
         "uid": "${DS_PROMETHEUS}"
       },
       "gridPos": {
-        "x": 8,
+        "x": 12,
         "y": 6,
-        "w": 8,
+        "w": 6,
         "h": 8
       },
       "fieldConfig": {
@@ -728,9 +770,9 @@
         "uid": "${DS_PROMETHEUS}"
       },
       "gridPos": {
-        "x": 16,
+        "x": 18,
         "y": 6,
-        "w": 8,
+        "w": 6,
         "h": 8
       },
       "fieldConfig": {
@@ -1289,6 +1331,6 @@
   ],
   "id": null,
   "schemaVersion": 39,
-  "version": 3,
+  "version": 4,
   "editable": true
 }

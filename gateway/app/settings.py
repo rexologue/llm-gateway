@@ -166,7 +166,7 @@ class Settings:
                 "GATEWAY_SESSION_KEY_PREFIX",
                 "llm-gateway:session:",
             ),
-            session_ttl_sec=int(os.getenv("GATEWAY_SESSION_TTL", "21600")),
+            session_ttl_sec=int(os.getenv("GATEWAY_SESSION_TTL", "180")),
             session_tracker_max_connections=int(
                 os.getenv("GATEWAY_SESSION_TRACKER_MAX_CONNECTIONS", "256")
             ),
