@@ -193,11 +193,10 @@ class SessionStore:
         ttl_sec: int | None,
         now: datetime,
     ) -> dict[str, Any]:
-        """Build a compact list entry from a stored ``{metadata, tools, ...}``."""
+        """Build a compact list entry from a stored record (new or legacy)."""
 
-        metadata = record.get("metadata")
-        metadata = metadata if isinstance(metadata, dict) else {}
-        tools = record.get("tools")
+        normalized = _coerce_record(record)
+        metadata = normalized["metadata"]
 
         created_at = metadata.get("created_at")
         updated_at = metadata.get("updated_at")
@@ -207,7 +206,7 @@ class SessionStore:
             "created_at": created_at,
             "updated_at": updated_at,
             "message_cnt": metadata.get("message_cnt"),
-            "tools_cnt": len(tools) if isinstance(tools, list) else 0,
+            "tools_cnt": len(normalized["tools"]),
             "age_sec": _elapsed_seconds(created_at, now),
             "idle_sec": _elapsed_seconds(updated_at, now),
             "expires_in_sec": ttl_sec,
@@ -219,16 +218,50 @@ class SessionStore:
         record: dict[str, Any],
         ttl_sec: int | None,
     ) -> dict[str, Any]:
-        """Return the record with read-time durations folded into its metadata."""
+        """Return a normalized record with read-time durations in its metadata."""
 
         now = datetime.now(UTC)
-        metadata = dict(record.get("metadata") or {})
+        normalized = _coerce_record(record)
+        metadata = normalized["metadata"]
 
         metadata["expires_in_sec"] = ttl_sec
         metadata["age_sec"] = _elapsed_seconds(metadata.get("created_at"), now)
         metadata["idle_sec"] = _elapsed_seconds(metadata.get("updated_at"), now)
 
-        return {**record, "metadata": metadata}
+        return normalized
+
+
+def _coerce_record(record: Any) -> dict[str, Any]:
+    """Return a stored record as ``{metadata, tools, messages}``.
+
+    New records already use this shape. Legacy records were flat
+    (``{session_id, updated_at, message_cnt, messages}``) with no ``metadata``
+    or ``tools``; those top-level fields are lifted into a synthesized metadata
+    block so the viewer renders old and new sessions the same way.
+    """
+
+    if not isinstance(record, dict):
+        return {"metadata": {}, "tools": [], "messages": []}
+
+    metadata = record.get("metadata")
+    if isinstance(metadata, dict):
+        metadata = dict(metadata)
+    else:
+        metadata = {
+            "session_id": record.get("session_id"),
+            "created_at": record.get("created_at"),
+            "updated_at": record.get("updated_at"),
+            "message_cnt": record.get("message_cnt"),
+        }
+
+    tools = record.get("tools")
+    messages = record.get("messages")
+
+    return {
+        "metadata": metadata,
+        "tools": tools if isinstance(tools, list) else [],
+        "messages": messages if isinstance(messages, list) else [],
+    }
 
 
 def _existing_created_at(existing: Any) -> str | None:
@@ -237,8 +270,7 @@ def _existing_created_at(existing: Any) -> str | None:
     if not isinstance(existing, dict):
         return None
 
-    metadata = existing.get("metadata")
-    created_at = metadata.get("created_at") if isinstance(metadata, dict) else None
+    created_at = _coerce_record(existing)["metadata"].get("created_at")
 
     return created_at if isinstance(created_at, str) else None
 

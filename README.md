@@ -139,7 +139,11 @@ TTL, while preserving the original `created_at`.
 - `GET /gateway/session/{session_id}` returns one full session record. Its
   `metadata` is enriched at read time with the same `age_sec`/`idle_sec`/
   `expires_in_sec` durations. Session lifetime comes from `created_at`, not the
-  TTL, which resets on every request.
+  TTL, which resets on every request. Add `?pretty=1` to also get
+  `messages_pretty`/`tools_pretty` (indented-JSON strings) for display.
+
+Records written before the `{metadata, tools, messages}` shape are normalized on
+read, so both endpoints keep working with older sessions.
 
 The `gateway-session-viewer` dashboard (see `docs/DASHBOARDS.md`) renders these
 endpoints as a full-dialog viewer.

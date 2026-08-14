@@ -7,6 +7,7 @@ import time
 from typing import Any, AsyncIterator, Mapping, cast
 
 import httpx
+import orjson
 from fastapi import APIRouter, FastAPI, Request, Response
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from opentelemetry import trace
@@ -65,6 +66,18 @@ def _get_state(app: FastAPI) -> AppState:
     """Return the initialized gateway state from the FastAPI application."""
 
     return cast(AppState, app.state.gateway_state)
+
+
+def _wants_pretty(request: Request) -> bool:
+    """Return whether the caller asked for indented-JSON rendering helpers."""
+
+    return request.query_params.get("pretty", "").lower() in {"1", "true", "yes", "on"}
+
+
+def _pretty_json(value: Any) -> str:
+    """Return a value as a 2-space indented JSON string (UTF-8, non-ASCII kept)."""
+
+    return orjson.dumps(value, option=orjson.OPT_INDENT_2).decode("utf-8")
 
 
 def create_router() -> APIRouter:
@@ -147,6 +160,18 @@ def create_router() -> APIRouter:
 
         if session is None:
             return JSONResponse({"error": "session not found"}, status_code=404)
+
+        # Branch: rendering aid for the session viewer. ``?pretty=1`` adds
+        # indented-JSON string copies of the tools and messages so a Grafana
+        # Infinity table can display them with real newlines and indentation,
+        # which a structural JSON cell does not preserve. The default response
+        # stays the clean {metadata, tools, messages} record.
+        if _wants_pretty(request):
+            session = {
+                **session,
+                "tools_pretty": _pretty_json(session.get("tools", [])),
+                "messages_pretty": _pretty_json(session.get("messages", [])),
+            }
 
         return JSONResponse(session)
 

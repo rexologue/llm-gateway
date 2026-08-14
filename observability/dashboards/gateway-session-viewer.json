@@ -140,10 +140,10 @@
     {
       "id": 4,
       "type": "table",
-      "title": "Declared tools (raw JSON)",
-      "description": "The tools array declared on the request, shown as raw indented JSON. Empty when the session never declared any tools. Expand nodes to read each function schema.",
+      "title": "Declared tools (JSON)",
+      "description": "The declared tools as indented JSON (the tools_pretty field from ?pretty=1). Empty [] when the session never declared any tools. Click the cell inspect icon for a full-height formatted view.",
       "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "${DS_INFINITY}" },
-      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 19 },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 19 },
       "targets": [
         {
           "refId": "A",
@@ -152,18 +152,18 @@
           "source": "url",
           "format": "table",
           "parser": "backend",
-          "url": "/gateway/session/${session_id}",
+          "url": "/gateway/session/${session_id}?pretty=1",
           "url_options": { "method": "GET", "data": "", "body_type": "raw" },
           "root_selector": "",
           "filters": [],
-          "columns": [{ "selector": "tools", "text": "tools", "type": "string" }]
+          "columns": [{ "selector": "tools_pretty", "text": "tools", "type": "string" }]
         }
       ],
       "fieldConfig": {
         "defaults": {
           "custom": {
             "align": "left",
-            "cellOptions": { "type": "json-view" },
+            "cellOptions": { "type": "auto", "wrapText": true },
             "filterable": false,
             "inspect": true
           }
@@ -179,10 +179,10 @@
     {
       "id": 5,
       "type": "table",
-      "title": "Dialog — messages (raw JSON)",
-      "description": "The full dialog as raw indented JSON in the OpenAI messages format: system/user/assistant turns, assistant tool_calls made during the dialog, and the role:\"tool\" results they returned. The final assistant turn is included. Expand nodes to read nested content and tool arguments.",
+      "title": "Dialog — messages (JSON)",
+      "description": "The full dialog as indented JSON (the messages_pretty field from ?pretty=1) in the OpenAI messages format: system/user/assistant turns, assistant tool_calls made during the dialog, and the role:\"tool\" results they returned. The final assistant turn is included. Click the cell inspect icon for a full-height formatted view.",
       "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "${DS_INFINITY}" },
-      "gridPos": { "h": 22, "w": 24, "x": 0, "y": 31 },
+      "gridPos": { "h": 24, "w": 24, "x": 0, "y": 29 },
       "targets": [
         {
           "refId": "A",
@@ -191,18 +191,18 @@
           "source": "url",
           "format": "table",
           "parser": "backend",
-          "url": "/gateway/session/${session_id}",
+          "url": "/gateway/session/${session_id}?pretty=1",
           "url_options": { "method": "GET", "data": "", "body_type": "raw" },
           "root_selector": "",
           "filters": [],
-          "columns": [{ "selector": "messages", "text": "messages", "type": "string" }]
+          "columns": [{ "selector": "messages_pretty", "text": "messages", "type": "string" }]
         }
       ],
       "fieldConfig": {
         "defaults": {
           "custom": {
             "align": "left",
-            "cellOptions": { "type": "json-view" },
+            "cellOptions": { "type": "auto", "wrapText": true },
             "filterable": false,
             "inspect": true
           }
