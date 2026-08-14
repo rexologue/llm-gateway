@@ -75,9 +75,23 @@ def _wants_pretty(request: Request) -> bool:
 
 
 def _pretty_json(value: Any) -> str:
-    """Return a value as a 2-space indented JSON string (UTF-8, non-ASCII kept)."""
+    """Return a value as indented JSON for display in a wrapped table cell.
 
-    return orjson.dumps(value, option=orjson.OPT_INDENT_2).decode("utf-8")
+    Grafana table cells keep newlines under ``wrapText`` but collapse the
+    leading spaces, which would flatten the nesting. Rendering each level's
+    indentation with non-breaking spaces keeps the structure visible.
+    """
+
+    text = orjson.dumps(value, option=orjson.OPT_INDENT_2).decode("utf-8")
+
+    return "\n".join(_nbsp_indent(line) for line in text.split("\n"))
+
+
+def _nbsp_indent(line: str) -> str:
+    """Replace a line's leading spaces with non-breaking spaces."""
+
+    stripped = line.lstrip(" ")
+    return " " * (len(line) - len(stripped)) + stripped
 
 
 def create_router() -> APIRouter:

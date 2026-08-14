@@ -38,10 +38,12 @@ existing Grafana instance or another managed observability workspace.
 - Stored records are `{metadata, tools, messages}`. The `Dialog` and
   `Declared tools` panels call `GET /gateway/session/{id}?pretty=1`, which adds
   `messages_pretty`/`tools_pretty` (indented-JSON strings) to the response, and
-  render them with wrapped table cells so the indentation and newlines survive.
-  (Grafana's structural JSON cell collapses Infinity's parsed value onto one
-  line, which is why the pretty strings are used instead.) Use a cell's inspect
-  icon for a full-height view.
+  render them in a wrapped table cell (`cellOptions.wrapText`). The gateway
+  indents those strings with non-breaking spaces, because a table cell keeps
+  newlines but collapses ordinary leading spaces — so the nesting stays visible.
+  (Grafana's structural JSON cell instead collapses Infinity's parsed value onto
+  one line, which is why the pretty strings are used.) Use a cell's inspect icon
+  for a full-height view.
 - `messages` holds the whole dialog: system/user/assistant turns, assistant
   `tool_calls` made during the session, the `role: "tool"` results they
   returned, and the final assistant turn. `tools` shows the declared schemas.
