@@ -127,11 +127,22 @@ Generic proxying also supports routes such as:
 ## Sessions
 
 When a `/v1/chat/completions` request includes `X-Session-ID`, the gateway stores
-that request's `messages` array in Valkey DB 1. Later requests with the same
-session id overwrite the stored record and refresh the TTL.
+the dialog in Valkey DB 1 as `{metadata, tools, messages}`: the request's
+declared `tools`, its `messages`, and the assistant turn the backend produced
+(appended after generation, reconstructed from the SSE stream when streaming).
+Later requests with the same session id overwrite the record and refresh the
+TTL, while preserving the original `created_at`.
 
-- `GET /gateway/session_list` returns all stored session ids.
-- `GET /gateway/session/{session_id}` returns one stored session record.
+- `GET /gateway/session_list` returns one metadata summary per stored session,
+  including `age_sec` (lifetime since the first request), `idle_sec` (since the
+  last request), and `expires_in_sec` (remaining TTL).
+- `GET /gateway/session/{session_id}` returns one full session record. Its
+  `metadata` is enriched at read time with the same `age_sec`/`idle_sec`/
+  `expires_in_sec` durations. Session lifetime comes from `created_at`, not the
+  TTL, which resets on every request.
+
+The `gateway-session-viewer` dashboard (see `docs/DASHBOARDS.md`) renders these
+endpoints as a full-dialog viewer.
 
 ## Logs
 

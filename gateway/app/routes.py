@@ -20,6 +20,7 @@ from app.http_utils import (
 )
 from app.loki_logging import LokiRequestContext
 from app.metrics import MetricsRequestContext
+from app.response_parsing import assistant_message_from_response
 from app.route_paths import (
     CHAT_COMPLETIONS_ROUTE,
     GATEWAY_METRICS_ROUTE,
@@ -117,18 +118,18 @@ def create_router() -> APIRouter:
 
     @router.get(GATEWAY_SESSION_LIST_ROUTE)
     async def session_list(request: Request) -> JSONResponse:
-        """Return ids for all persisted chat sessions."""
+        """Return metadata summaries for all persisted chat sessions."""
 
         state = _get_state(request.app)
         try:
-            session_ids = await state.session_store.list_session_ids()
+            sessions = await state.session_store.list_sessions()
         except RedisError as exc:
             return JSONResponse(
                 {"error": "session store unavailable", "detail": type(exc).__name__},
                 status_code=503,
             )
 
-        return JSONResponse(session_ids)
+        return JSONResponse(sessions)
 
 
     @router.get(GATEWAY_SESSION_DETAIL_ROUTE)
@@ -205,6 +206,7 @@ def create_router() -> APIRouter:
                 messages_saved = await state.session_store.save_messages(
                     session_id,
                     payload.get("messages"),
+                    payload.get("tools"),
                 )
 
             set_span_attributes(
@@ -443,6 +445,41 @@ def create_router() -> APIRouter:
 
     return router
 
+
+
+async def _persist_completed_session(
+    *,
+    state: AppState,
+    session_id: str | None,
+    payload: dict[str, Any],
+    stream: bool,
+    response_text: str,
+) -> None:
+    """Append the produced assistant turn to the stored session transcript.
+
+    The request ``messages`` were already persisted before generation. Once the
+    backend has answered, we re-save them together with the reconstructed
+    assistant message so the stored session includes the final turn (content and
+    any ``tool_calls``). Parsing failures leave the pre-generation snapshot in
+    place, and Valkey errors are swallowed by the session store.
+    """
+
+    request_messages = payload.get("messages")
+    if session_id is None or not isinstance(request_messages, list):
+        return
+
+    assistant_message = assistant_message_from_response(
+        stream=stream,
+        response_text=response_text,
+    )
+    if assistant_message is None:
+        return
+
+    await state.session_store.save_messages(
+        session_id,
+        [*request_messages, assistant_message],
+        payload.get("tools"),
+    )
 
 
 async def _handle_invalid_chat_payload(
@@ -750,6 +787,14 @@ async def _handle_stream_chat_completion(
                                 ttft_sec=ttft_sec,
                             )
 
+                            await _persist_completed_session(
+                                state=state,
+                                session_id=session_id,
+                                payload=payload,
+                                stream=True,
+                                response_text=body_text,
+                            )
+
                         # Branch: stream ended because the iterator raised or
                         # was cancelled. The terminal event is an error because
                         # the gateway could not observe a complete response.
@@ -861,6 +906,14 @@ async def _handle_non_stream_chat_completion(
                 response_bytes=backend_response.content,
                 response_text=response_text,
                 e2e_sec=duration_sec,
+            )
+
+            await _persist_completed_session(
+                state=state,
+                session_id=session_id,
+                payload=payload,
+                stream=False,
+                response_text=response_text,
             )
 
             metrics_context.response(

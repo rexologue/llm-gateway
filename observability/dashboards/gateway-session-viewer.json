@@ -1,0 +1,250 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Session viewer for the LLM gateway. Everything is served by the gateway itself through the Infinity datasource using RELATIVE urls, so no Loki is needed: the list calls GET /gateway/session_list and the detail panels call GET /gateway/session/{session_id}. Set the Infinity datasource Base URL to the gateway root (e.g. http://llm-gateway:8080) and add that host to Infinity > Security > Allowed hosts. Stored records are {metadata, tools, messages}; the metadata durations (age_sec/idle_sec/expires_in_sec) are computed at read time.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "type": "table",
+      "title": "Stored sessions",
+      "description": "All chat sessions currently persisted in Valkey, newest activity first. age_sec is the lifetime since the first request (from created_at); idle_sec is time since the last request; expires_in_sec is the remaining TTL (reset on every request). Click a session id to load its full record below.",
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "${DS_INFINITY}" },
+      "gridPos": { "h": 11, "w": 24, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "${DS_INFINITY}" },
+          "type": "json",
+          "source": "url",
+          "format": "table",
+          "parser": "backend",
+          "url": "/gateway/session_list",
+          "url_options": { "method": "GET", "data": "", "body_type": "raw" },
+          "root_selector": "",
+          "filters": [],
+          "columns": [
+            { "selector": "session_id", "text": "session_id", "type": "string" },
+            { "selector": "updated_at", "text": "updated_at", "type": "string" },
+            { "selector": "age_sec", "text": "age", "type": "number" },
+            { "selector": "idle_sec", "text": "idle", "type": "number" },
+            { "selector": "expires_in_sec", "text": "expires_in", "type": "number" },
+            { "selector": "message_cnt", "text": "messages", "type": "number" },
+            { "selector": "tools_cnt", "text": "tools", "type": "number" }
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "align": "left", "cellOptions": { "type": "auto" }, "filterable": true, "inspect": false }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "session_id" },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Open this session",
+                    "url": "/d/gateway-session-viewer/gateway-session-viewer?var-session_id=${__value.raw}&${__url_time_range}"
+                  }
+                ]
+              },
+              { "id": "custom.width", "value": 360 }
+            ]
+          },
+          {
+            "matcher": { "id": "byRegexp", "options": "age|idle|expires_in" },
+            "properties": [{ "id": "unit", "value": "s" }]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [{ "displayName": "updated_at", "desc": true }],
+        "footer": { "show": false, "reducer": ["sum"], "countRows": false, "fields": "" }
+      }
+    },
+    {
+      "id": 2,
+      "type": "row",
+      "title": "Session detail — $session_id",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 11 },
+      "panels": []
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "Metadata",
+      "description": "metadata block of the stored record. created_at is the first request of the session; updated_at is the last. age_sec/idle_sec/expires_in_sec are computed when the record is read.",
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "${DS_INFINITY}" },
+      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 12 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "${DS_INFINITY}" },
+          "type": "json",
+          "source": "url",
+          "format": "table",
+          "parser": "backend",
+          "url": "/gateway/session/${session_id}",
+          "url_options": { "method": "GET", "data": "", "body_type": "raw" },
+          "root_selector": "metadata",
+          "filters": [],
+          "columns": [
+            { "selector": "session_id", "text": "session_id", "type": "string" },
+            { "selector": "created_at", "text": "created_at", "type": "string" },
+            { "selector": "updated_at", "text": "updated_at", "type": "string" },
+            { "selector": "age_sec", "text": "age", "type": "number" },
+            { "selector": "idle_sec", "text": "idle", "type": "number" },
+            { "selector": "expires_in_sec", "text": "expires_in", "type": "number" },
+            { "selector": "message_cnt", "text": "messages", "type": "number" }
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "align": "left", "cellOptions": { "type": "auto" }, "filterable": false, "inspect": false }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byRegexp", "options": "age|idle|expires_in" },
+            "properties": [{ "id": "unit", "value": "s" }]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": { "show": false, "reducer": ["sum"], "countRows": false, "fields": "" }
+      }
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "Declared tools (raw JSON)",
+      "description": "The tools array declared on the request, shown as raw indented JSON. Empty when the session never declared any tools. Expand nodes to read each function schema.",
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "${DS_INFINITY}" },
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 19 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "${DS_INFINITY}" },
+          "type": "json",
+          "source": "url",
+          "format": "table",
+          "parser": "backend",
+          "url": "/gateway/session/${session_id}",
+          "url_options": { "method": "GET", "data": "", "body_type": "raw" },
+          "root_selector": "",
+          "filters": [],
+          "columns": [{ "selector": "tools", "text": "tools", "type": "string" }]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "left",
+            "cellOptions": { "type": "json-view" },
+            "filterable": false,
+            "inspect": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": false,
+        "cellHeight": "lg",
+        "footer": { "show": false, "reducer": ["sum"], "countRows": false, "fields": "" }
+      }
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "Dialog — messages (raw JSON)",
+      "description": "The full dialog as raw indented JSON in the OpenAI messages format: system/user/assistant turns, assistant tool_calls made during the dialog, and the role:\"tool\" results they returned. The final assistant turn is included. Expand nodes to read nested content and tool arguments.",
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "${DS_INFINITY}" },
+      "gridPos": { "h": 22, "w": 24, "x": 0, "y": 31 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "${DS_INFINITY}" },
+          "type": "json",
+          "source": "url",
+          "format": "table",
+          "parser": "backend",
+          "url": "/gateway/session/${session_id}",
+          "url_options": { "method": "GET", "data": "", "body_type": "raw" },
+          "root_selector": "",
+          "filters": [],
+          "columns": [{ "selector": "messages", "text": "messages", "type": "string" }]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "left",
+            "cellOptions": { "type": "json-view" },
+            "filterable": false,
+            "inspect": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": false,
+        "cellHeight": "lg",
+        "footer": { "show": false, "reducer": ["sum"], "countRows": false, "fields": "" }
+      }
+    }
+  ],
+  "refresh": "",
+  "schemaVersion": 42,
+  "tags": ["llm-gateway", "gateway", "sessions", "infinity"],
+  "templating": {
+    "list": [
+      {
+        "name": "DS_INFINITY",
+        "type": "datasource",
+        "label": "Infinity datasource",
+        "query": "yesoreyeram-infinity-datasource",
+        "current": { "selected": false, "text": "Infinity", "value": "infinity" },
+        "hide": 0,
+        "refresh": 1
+      },
+      {
+        "name": "session_id",
+        "type": "textbox",
+        "label": "session_id",
+        "description": "Session id to inspect. Filled automatically when you click a row in Stored sessions.",
+        "query": "",
+        "current": { "text": "", "value": "" }
+      }
+    ]
+  },
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": {},
+  "timezone": "",
+  "title": "Gateway / Session Viewer",
+  "uid": "gateway-session-viewer",
+  "version": 1,
+  "weekStart": ""
+}

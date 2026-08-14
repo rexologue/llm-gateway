@@ -65,6 +65,17 @@ def test_chat_completion_smoke() -> None:
     assert choices
     assert _choice_text(choices[0])
 
+    # The persisted session must include the assistant turn the backend just
+    # produced, not only the request messages.
+    record = _fetch_session(headers["X-Session-ID"])
+    assert record["metadata"]["session_id"] == headers["X-Session-ID"]
+    assert record["tools"] == []
+
+    last_message = record["messages"][-1]
+    assert last_message.get("role") == "assistant"
+    assert isinstance(last_message.get("content"), str)
+    assert last_message["content"].strip()
+
 
 def test_chat_completion_stream_smoke() -> None:
     """Send one streaming chat completion request and verify SSE deltas."""
@@ -92,6 +103,13 @@ def test_chat_completion_stream_smoke() -> None:
     assert "text/event-stream" in content_type, content_type
     assert saw_done, "stream did not terminate with a [DONE] sentinel"
     assert content.strip(), "stream produced no assistant content"
+
+    # The assistant turn reconstructed from the SSE stream must be persisted.
+    record = _fetch_session(headers["X-Session-ID"])
+    last_message = record["messages"][-1]
+    assert last_message.get("role") == "assistant"
+    assert isinstance(last_message.get("content"), str)
+    assert last_message["content"].strip()
 
 
 def test_chat_completion_tools_smoke() -> None:
@@ -181,6 +199,21 @@ def test_chat_completion_tools_smoke() -> None:
     assert isinstance(parsed_arguments, dict)
     assert parsed_arguments.get("city")
 
+    # The persisted session must keep the declared tools and the assistant turn
+    # that called one of them.
+    record = _fetch_session(headers["X-Session-ID"])
+
+    stored_tools = record.get("tools")
+    assert isinstance(stored_tools, list) and stored_tools
+    assert stored_tools[0]["function"]["name"] == tool_name
+
+    last_message = record["messages"][-1]
+    assert last_message.get("role") == "assistant"
+
+    stored_tool_calls = last_message.get("tool_calls")
+    assert isinstance(stored_tool_calls, list) and stored_tool_calls
+    assert stored_tool_calls[0]["function"]["name"] == tool_name
+
 
 def test_chat_completion_no_reasoning_smoke() -> None:
     """Verify the gateway forces thinking off regardless of backend defaults.
@@ -242,6 +275,23 @@ def test_chat_completion_no_reasoning_smoke() -> None:
     assert "<think>" not in content.lower(), (
         "gateway did not disable thinking: <think> block leaked into content"
     )
+
+
+def _fetch_session(session_id: str) -> dict[str, Any]:
+    """Return the persisted session record for a session id via the gateway API."""
+
+    with httpx.Client(base_url=BASE_URL, timeout=TIMEOUT_SEC) as client:
+        response = client.get(f"/gateway/session/{session_id}")
+
+    assert response.status_code == 200, response.text
+
+    record = response.json()
+
+    assert isinstance(record, dict)
+    assert isinstance(record.get("metadata"), dict)
+    assert isinstance(record.get("messages"), list) and record["messages"]
+
+    return record
 
 
 def _stream_chat(
