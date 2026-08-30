@@ -951,7 +951,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(vllm:prompt_tokens_recomputed_total{instance=~\"$vllm_instance\"}[5m]))",
+          "expr": "sum(rate(vllm:prompt_tokens_by_source_total{instance=~\"$vllm_instance\",source=\"local_compute\"}[5m]))",
           "legendFormat": "recomputed prompt tok/s",
           "refId": "D"
         }
