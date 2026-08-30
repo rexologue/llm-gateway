@@ -117,6 +117,7 @@ Gateway-side useful URLs:
 - gateway: `http://0.0.0.0:9090`
 - gateway health: `http://0.0.0.0:9090/health`
 - gateway metrics endpoint: `http://0.0.0.0:9090/gateway/metrics`
+- backend metrics proxy: `http://0.0.0.0:9090/metrics`
 - gateway Prometheus: `http://0.0.0.0:9091`
 - Loki: `http://0.0.0.0:9092`
 - Tempo: `http://0.0.0.0:3200`
@@ -153,10 +154,13 @@ Smoke checks after startup:
 curl -fsS http://127.0.0.1:9900/v1/models
 curl -fsS http://127.0.0.1:9090/health
 curl -fsS http://127.0.0.1:9090/gateway/metrics
+curl -fsS http://127.0.0.1:9090/metrics
 curl -fsS http://127.0.0.1:9090/v1/models
 ```
 
-`http://127.0.0.1:9090/metrics` is intentionally not served by the gateway.
+`http://127.0.0.1:9090/metrics` proxies the backend metrics endpoint and
+returns `503` when the backend is unavailable. It is separate from the gateway's
+own metrics at `/gateway/metrics`.
 
 ## Compose Smoke Tests
 

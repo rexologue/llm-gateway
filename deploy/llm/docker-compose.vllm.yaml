@@ -6,6 +6,7 @@ services:
     entrypoint: ["/bin/bash", "-lc"]
     command: ["bash /serve_vllm.sh"]
     runtime: nvidia
+    shm_size: '2gb'
 
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/v1/models >/dev/null || exit 1"]

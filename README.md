@@ -10,12 +10,15 @@ The gateway:
 - proxies all other `/v1/*` routes as generic OpenAI-compatible routes;
 - writes compact request/response/error events to Loki;
 - exposes gateway Prometheus metrics at `/gateway/metrics`;
+- proxies backend metrics at `/metrics`;
 - emits OpenTelemetry traces to an OTLP collector when enabled;
 - tracks first request in a session by `X-Session-ID` using Valkey.
 
-The gateway no longer exposes `/metrics`. The LLM compose stack has its own
-Prometheus for backend metrics, and the gateway compose stack has a separate
-Prometheus for gateway metrics.
+The gateway exposes two separate metrics endpoints: `/gateway/metrics` for the
+gateway's own Prometheus metrics, and `/metrics`, which proxies the backend
+metrics endpoint (returning `503` when the backend is unavailable). The LLM
+compose stack has its own Prometheus for backend metrics, and the gateway
+compose stack has a separate Prometheus for gateway metrics.
 
 ## Layout
 
@@ -86,6 +89,7 @@ Default ports:
 - LLM Prometheus: `http://0.0.0.0:9191`
 - gateway: `http://0.0.0.0:9090`
 - gateway metrics endpoint: `http://0.0.0.0:9090/gateway/metrics`
+- backend metrics proxy: `http://0.0.0.0:9090/metrics`
 - gateway Prometheus: `http://0.0.0.0:9091`
 - Loki: `http://0.0.0.0:9092`
 - Tempo: `http://0.0.0.0:3200`

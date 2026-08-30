@@ -1,13 +1,27 @@
 # Metrics
 
-The gateway exposes only its own Prometheus metrics:
+The gateway exposes its own Prometheus metrics:
 
 ```text
 GET /gateway/metrics
 ```
 
-It does not proxy backend `/metrics`. Prometheus scrapes backend metrics
-directly from the selected backend service.
+It also proxies the backend metrics endpoint:
+
+```text
+GET /metrics
+```
+
+`GET /metrics` forwards to the backend's own `/metrics` endpoint and returns the
+backend response verbatim (status, body, and `content-type`). When the backend
+cannot be reached it returns `503` with `{"ok": false, "backend":
+"unavailable", "detail": ...}`.
+
+The gateway-stack Prometheus still scrapes `/gateway/metrics` only, and backend
+metrics are scraped directly from the selected backend service (see
+[Backend Metrics](#backend-metrics)). The `/metrics` proxy is a convenience for
+reaching backend metrics through the gateway, not a scrape target for the
+gateway Prometheus.
 
 Use metrics for aggregate behavior and alerting. Use [TRACES.md](TRACES.md) for
 per-request timing and span-level investigation.
