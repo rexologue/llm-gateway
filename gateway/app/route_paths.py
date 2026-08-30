@@ -4,6 +4,7 @@ from __future__ import annotations
 
 ROOT_ROUTE = "/"
 HEALTH_ROUTE = "/health"
+METRICS_ROUTE = "/metrics"
 GATEWAY_METRICS_ROUTE = "/gateway/metrics"
 GATEWAY_SESSION_LIST_ROUTE = "/gateway/session_list"
 GATEWAY_SESSION_DETAIL_ROUTE = "/gateway/session/{session_id}"

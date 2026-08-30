@@ -29,6 +29,7 @@ from app.route_paths import (
     GATEWAY_SESSION_LIST_ROUTE,
     GENERIC_V1_PROXY_ROUTE,
     HEALTH_ROUTE,
+    METRICS_ROUTE,
     ROOT_ROUTE,
     V1_ROUTE_PREFIX,
 )
@@ -110,6 +111,36 @@ def create_router() -> APIRouter:
             backend_response = await state.backend.request(
                 method="GET",
                 route=HEALTH_ROUTE,
+                headers={},
+                content=b"",
+            )
+        except httpx.HTTPError as exc:
+            return JSONResponse(
+                {
+                    "ok": False,
+                    "backend": "unavailable",
+                    "detail": type(exc).__name__,
+                },
+                status_code=503,
+            )
+
+        return Response(
+            content=backend_response.content,
+            status_code=backend_response.status_code,
+            media_type=backend_response.headers.get("content-type"),
+        )
+
+
+    @router.get(METRICS_ROUTE)
+    async def metrics(request: Request) -> Response:
+        """Return the backend metrics endpoint response."""
+
+        state = _get_state(request.app)
+
+        try:
+            backend_response = await state.backend.request(
+                method="GET",
+                route=METRICS_ROUTE,
                 headers={},
                 content=b"",
             )
