@@ -21,6 +21,22 @@
   "links": [],
   "panels": [
     {
+      "id": 11,
+      "type": "text",
+      "title": "⚠️ Если везде «No Data»",
+      "gridPos": {
+        "h": 4,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Пустые панели — это **не значит**, что метрики/трейсы не экспортируются. Сначала убедитесь, что выбран **правильный Data Source** в переменных дашборда (сверху). После выбора нажмите Refresh.\n"
+      },
+      "transparent": false
+    },
+    {
       "id": 1,
       "type": "text",
       "title": "Tempo usage",
@@ -28,7 +44,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 0
+        "y": 4
       },
       "options": {
         "mode": "markdown",
@@ -53,7 +69,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 8
+        "y": 12
       },
       "fieldConfig": {
         "defaults": {
@@ -115,7 +131,7 @@
         "h": 10,
         "w": 12,
         "x": 0,
-        "y": 18
+        "y": 22
       },
       "fieldConfig": {
         "defaults": {
@@ -177,7 +193,7 @@
         "h": 10,
         "w": 12,
         "x": 12,
-        "y": 18
+        "y": 22
       },
       "fieldConfig": {
         "defaults": {
@@ -239,7 +255,7 @@
         "h": 10,
         "w": 12,
         "x": 0,
-        "y": 28
+        "y": 32
       },
       "fieldConfig": {
         "defaults": {
@@ -301,7 +317,7 @@
         "h": 10,
         "w": 12,
         "x": 12,
-        "y": 28
+        "y": 32
       },
       "fieldConfig": {
         "defaults": {
@@ -363,7 +379,7 @@
         "h": 10,
         "w": 8,
         "x": 0,
-        "y": 38
+        "y": 42
       },
       "fieldConfig": {
         "defaults": {
@@ -425,7 +441,7 @@
         "h": 10,
         "w": 8,
         "x": 8,
-        "y": 38
+        "y": 42
       },
       "fieldConfig": {
         "defaults": {
@@ -487,7 +503,7 @@
         "h": 10,
         "w": 8,
         "x": 16,
-        "y": 38
+        "y": 42
       },
       "fieldConfig": {
         "defaults": {
@@ -544,7 +560,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 48
+        "y": 52
       },
       "options": {
         "mode": "markdown",
