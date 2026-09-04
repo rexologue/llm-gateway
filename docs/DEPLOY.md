@@ -1,50 +1,50 @@
-# Deployment Notes
+# Заметки по развёртыванию
 
-This document describes the split deployment layout:
+Этот документ описывает разделённую схему развёртывания:
 
-- `deploy/llm` runs exactly one LLM backend stack: vLLM or SGLang.
-- `deploy/gateway` runs the OpenAI-compatible gateway and gateway observability
-  plumbing.
+- `deploy/llm` запускает ровно один стек LLM-бэкенда: vLLM или SGLang.
+- `deploy/gateway` запускает OpenAI-совместимый шлюз и обвязку наблюдаемости
+  для шлюза.
 
-The recommended deployment flow is backend-first:
+Рекомендуемый порядок развёртывания — «сначала бэкенд»:
 
-1. Start the selected backend stack.
-2. Validate the backend directly.
-3. Start the gateway stack.
-4. Validate the gateway path against the already checked backend.
+1. Запустить выбранный стек бэкенда.
+2. Проверить бэкенд напрямую.
+3. Запустить стек шлюза.
+4. Проверить путь через шлюз к уже проверенному бэкенду.
 
-Metrics are documented in [METRICS.md](METRICS.md), and tracing is documented
-in [TRACES.md](TRACES.md). Dashboard JSON exports are documented in
+Метрики описаны в [METRICS.md](METRICS.md), трассировка — в
+[TRACES.md](TRACES.md). JSON-экспорты дашбордов описаны в
 [DASHBOARDS.md](DASHBOARDS.md).
 
-All paths in this document are relative to the repository root unless a command
-changes directory explicitly.
+Все пути в этом документе указаны относительно корня репозитория, если команда
+явно не меняет каталог.
 
-## LLM Stack
+## Стек LLM
 
-The LLM stack contains:
+Стек LLM содержит:
 
-- the selected LLM engine;
-- Prometheus scraping backend metrics, node metrics, and DCGM GPU metrics;
+- выбранный LLM-движок;
+- Prometheus, собирающий метрики бэкенда, метрики узла и метрики GPU из DCGM;
 - Node exporter;
 - DCGM exporter.
 
-The gateway is intentionally not part of this compose stack.
+Шлюз намеренно не входит в этот compose-стек.
 
-Create local LLM settings:
+Создайте локальные настройки LLM:
 
 ```bash
 cp deploy/llm/.env.example deploy/llm/.env
 ```
 
-Then edit `deploy/llm/.env`:
+Затем отредактируйте `deploy/llm/.env`:
 
-- set the local model path;
-- choose image tags;
-- keep `LLM_HOST=127.0.0.1` and `LLM_HTTP_PORT=9900` unless you want the backend
-  API exposed differently.
+- укажите локальный путь к модели;
+- выберите теги образов;
+- оставьте `LLM_HOST=127.0.0.1` и `LLM_HTTP_PORT=9900`, если не хотите
+  публиковать API бэкенда иначе.
 
-Start vLLM and run the direct backend smoke test:
+Запустить vLLM и выполнить прямой smoke-тест бэкенда:
 
 ```bash
 cd deploy/llm
@@ -52,7 +52,7 @@ docker compose --env-file .env -f docker-compose.vllm.yaml up -d --build
 docker compose --env-file .env -f docker-compose.vllm.yaml --profile test run --rm llm-smoke-tests
 ```
 
-Start SGLang instead and run the direct backend smoke test:
+Запустить вместо него SGLang и выполнить прямой smoke-тест бэкенда:
 
 ```bash
 cd deploy/llm
@@ -60,51 +60,52 @@ docker compose --env-file .env -f docker-compose.sglang.yaml up -d --build
 docker compose --env-file .env -f docker-compose.sglang.yaml --profile test run --rm llm-smoke-tests
 ```
 
-Only one backend variant should bind `127.0.0.1:9900` at a time.
+В один момент времени `127.0.0.1:9900` должен занимать только один вариант
+бэкенда.
 
-LLM-side useful URLs:
+Полезные URL на стороне LLM:
 
-- LLM OpenAI-compatible API: `http://127.0.0.1:9900`
-- LLM Prometheus: `http://0.0.0.0:9191`
+- OpenAI-совместимый API LLM: `http://127.0.0.1:9900`
+- Prometheus LLM: `http://0.0.0.0:9191`
 
-Prometheus configs:
+Конфигурации Prometheus:
 
 - vLLM: `deploy/llm/configs/prometheus-vllm.yaml`
 - SGLang: `deploy/llm/configs/prometheus-sglang.yaml`
 
-The launch scripts are:
+Скрипты запуска:
 
 - `deploy/llm/serve_vllm.sh`
 - `deploy/llm/serve_sglang.sh`
 
-## Gateway Stack
+## Стек шлюза
 
-The gateway stack contains:
+Стек шлюза содержит:
 
-- the FastAPI gateway;
-- Valkey for runtime session tracking and persisted chat inspection;
-- Prometheus scraping only gateway metrics;
-- Loki for gateway structured events;
+- FastAPI-шлюз;
+- Valkey для рантайм-отслеживания сессий и просмотра сохранённых чатов;
+- Prometheus, собирающий только метрики шлюза;
+- Loki для структурированных событий шлюза;
 - OpenTelemetry Collector;
 - Tempo.
 
-The LLM backend is intentionally not part of this compose stack. By default, the
-gateway calls:
+LLM-бэкенд намеренно не входит в этот compose-стек. По умолчанию шлюз
+обращается к:
 
 ```text
 GATEWAY_BACKEND_BASE_URL=http://host.docker.gateway:9900
 ```
 
-That matches the default LLM stack binding. Change it in
-`deploy/gateway/.env` when the backend lives elsewhere.
+Это соответствует привязке по умолчанию в стеке LLM. Измените значение в
+`deploy/gateway/.env`, если бэкенд расположен в другом месте.
 
-Create local gateway settings:
+Создайте локальные настройки шлюза:
 
 ```bash
 cp deploy/gateway/.env.example deploy/gateway/.env
 ```
 
-Then start the gateway stack and run the gateway smoke test:
+Затем запустите стек шлюза и выполните smoke-тест шлюза:
 
 ```bash
 cd deploy/gateway
@@ -112,18 +113,18 @@ docker compose --env-file .env -f docker-compose.yaml up -d --build
 docker compose --env-file .env -f docker-compose.yaml --profile test run --rm gateway-smoke-tests
 ```
 
-Gateway-side useful URLs:
+Полезные URL на стороне шлюза:
 
-- gateway: `http://0.0.0.0:9090`
-- gateway health: `http://0.0.0.0:9090/health`
-- gateway metrics endpoint: `http://0.0.0.0:9090/gateway/metrics`
-- backend metrics proxy: `http://0.0.0.0:9090/metrics`
-- gateway Prometheus: `http://0.0.0.0:9091`
+- шлюз: `http://0.0.0.0:9090`
+- health шлюза: `http://0.0.0.0:9090/health`
+- эндпоинт метрик шлюза: `http://0.0.0.0:9090/gateway/metrics`
+- прокси метрик бэкенда: `http://0.0.0.0:9090/metrics`
+- Prometheus шлюза: `http://0.0.0.0:9091`
 - Loki: `http://0.0.0.0:9092`
 - Tempo: `http://0.0.0.0:3200`
-- OTLP/gRPC collector endpoint: `0.0.0.0:4317`
+- эндпоинт коллектора OTLP/gRPC: `0.0.0.0:4317`
 
-Gateway configs:
+Конфигурации шлюза:
 
 - Prometheus: `deploy/gateway/configs/prometheus-gateway.yaml`
 - Loki: `deploy/gateway/configs/loki-config.yaml`
@@ -131,13 +132,13 @@ Gateway configs:
 - OpenTelemetry Collector: `deploy/gateway/configs/otel-collector.yaml`
 - Tempo: `deploy/gateway/configs/tempo.yaml`
 
-Grafana is not part of the compose stack. Import dashboard JSON files from
-`observability/dashboards/` into an existing Grafana or managed observability
-workspace when a visual UI is needed.
+Grafana не входит в compose-стек. Импортируйте JSON-файлы дашбордов из
+`observability/dashboards/` в существующий Grafana или в управляемый workspace
+наблюдаемости, когда нужен визуальный интерфейс.
 
-## Validation
+## Проверка
 
-Render compose configs:
+Отрисовать (render) compose-конфигурации:
 
 ```bash
 cd deploy/llm
@@ -148,7 +149,7 @@ cd ../gateway
 docker compose --env-file .env.example -f docker-compose.yaml config
 ```
 
-Smoke checks after startup:
+Smoke-проверки после запуска:
 
 ```bash
 curl -fsS http://127.0.0.1:9900/v1/models
@@ -158,30 +159,30 @@ curl -fsS http://127.0.0.1:9090/metrics
 curl -fsS http://127.0.0.1:9090/v1/models
 ```
 
-`http://127.0.0.1:9090/metrics` proxies the backend metrics endpoint and
-returns `503` when the backend is unavailable. It is separate from the gateway's
-own metrics at `/gateway/metrics`.
+`http://127.0.0.1:9090/metrics` проксирует эндпоинт метрик бэкенда и возвращает
+`503`, когда бэкенд недоступен. Это отдельный эндпоинт от собственных метрик
+шлюза на `/gateway/metrics`.
 
-## Compose Smoke Tests
+## Smoke-тесты в Compose
 
-The compose files include optional test-runner services under the `test`
-profile. They send one non-streaming OpenAI-compatible chat completion request
-and fail when the backend/gateway does not return a valid answer. When
-`SMOKE_CHECK_TOOLS=true`, they also send a forced OpenAI-compatible tool-call
-request and fail unless the response contains valid `tool_calls` with JSON
-function arguments.
+Compose-файлы содержат опциональные сервисы-раннеры тестов под профилем `test`.
+Они отправляют один непотоковый OpenAI-совместимый запрос chat completion и
+завершаются с ошибкой, когда бэкенд/шлюз не возвращает корректный ответ. При
+`SMOKE_CHECK_TOOLS=true` они дополнительно отправляют принудительный
+OpenAI-совместимый запрос с вызовом инструмента и завершаются с ошибкой, если в
+ответе нет корректных `tool_calls` с JSON-аргументами функции.
 
-The normal workflow is:
+Обычный сценарий работы:
 
-1. Start the backend stack in detached mode.
-2. Run the backend smoke-test service as a one-off container.
-3. Start the gateway stack in detached mode.
-4. Run the gateway smoke-test service as a one-off container.
-5. Keep the stacks running after the test containers exit.
+1. Запустить стек бэкенда в фоновом режиме (detached).
+2. Запустить сервис smoke-тестов бэкенда как одноразовый контейнер.
+3. Запустить стек шлюза в фоновом режиме.
+4. Запустить сервис smoke-тестов шлюза как одноразовый контейнер.
+5. Оставить стеки работающими после завершения тестовых контейнеров.
 
-Run direct backend smoke tests from `deploy/llm`.
+Прямые smoke-тесты бэкенда запускайте из `deploy/llm`.
 
-For vLLM:
+Для vLLM:
 
 ```bash
 docker compose \
@@ -196,13 +197,13 @@ docker compose \
   run --rm llm-smoke-tests
 ```
 
-One-command variant:
+Вариант одной командой:
 
 ```bash
 docker compose --env-file .env -f docker-compose.vllm.yaml up -d --build && docker compose --env-file .env -f docker-compose.vllm.yaml --profile test run --rm llm-smoke-tests
 ```
 
-For SGLang:
+Для SGLang:
 
 ```bash
 docker compose \
@@ -217,14 +218,14 @@ docker compose \
   run --rm llm-smoke-tests
 ```
 
-One-command variant:
+Вариант одной командой:
 
 ```bash
 docker compose --env-file .env -f docker-compose.sglang.yaml up -d --build && docker compose --env-file .env -f docker-compose.sglang.yaml --profile test run --rm llm-smoke-tests
 ```
 
-Run gateway smoke tests from `deploy/gateway` after the LLM stack is reachable
-through `GATEWAY_BACKEND_BASE_URL`:
+Smoke-тесты шлюза запускайте из `deploy/gateway` после того, как стек LLM стал
+доступен по адресу из `GATEWAY_BACKEND_BASE_URL`:
 
 ```bash
 docker compose \
@@ -239,18 +240,18 @@ docker compose \
   run --rm gateway-smoke-tests
 ```
 
-One-command variant:
+Вариант одной командой:
 
 ```bash
 docker compose --env-file .env -f docker-compose.yaml up -d --build && docker compose --env-file .env -f docker-compose.yaml --profile test run --rm gateway-smoke-tests
 ```
 
-`run --rm` returns the pytest exit code and removes only the finished test
-container. It does not stop the backend, gateway, Prometheus, Loki, Tempo, or
-exporters.
+`run --rm` возвращает код выхода pytest и удаляет только завершившийся тестовый
+контейнер. Он не останавливает бэкенд, шлюз, Prometheus, Loki, Tempo или
+экспортеры.
 
-The prompt, model, timeout, and optional API key are passed to the smoke test
-container through `env_file: .env`:
+Промпт, модель, таймаут и опциональный API-ключ передаются в контейнер
+smoke-тестов через `env_file: .env`:
 
 - `SMOKE_MODEL`
 - `SMOKE_PROMPT`
@@ -258,6 +259,7 @@ container through `env_file: .env`:
 - `SMOKE_API_KEY`
 - `SMOKE_CHECK_TOOLS`
 
-Set `SMOKE_CHECK_TOOLS=true` only when tool calling is part of the expected
-runtime contract and the selected backend was launched with tool-call support.
-Leave it `false` for deployments that only need plain chat completions.
+Задавайте `SMOKE_CHECK_TOOLS=true` только тогда, когда вызов инструментов
+входит в ожидаемый рантайм-контракт и выбранный бэкенд был запущен с поддержкой
+tool-call. Для развёртываний, которым нужны только обычные chat completions,
+оставьте `false`.

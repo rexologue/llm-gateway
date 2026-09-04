@@ -1,190 +1,194 @@
-# Traces
+# Трассы
 
-The gateway can export OpenTelemetry traces to an OTLP collector. The gateway
-compose stack includes an OpenTelemetry Collector and Tempo. Grafana is not
-part of the deployment stack; dashboard JSON exports live in
-`observability/dashboards/`.
+Шлюз может экспортировать OpenTelemetry-трассы в OTLP-коллектор. Compose-стек
+шлюза включает OpenTelemetry Collector и Tempo. Grafana не входит в стек
+развёртывания; JSON-экспорты дашбордов лежат в `observability/dashboards/`.
 
-Tracing is useful when one request has to be followed end-to-end: gateway
-request handling, backend call timing, streaming iteration, cancellations, and
-errors. Metrics remain the better source for aggregate rates, latency
-histograms, and alerts.
+Трассировка полезна, когда один запрос нужно проследить целиком: обработку
+запроса в шлюзе, тайминг вызова бэкенда, итерирование потока, отмены и ошибки.
+Метрики остаются лучшим источником для агрегированных частот, гистограмм
+задержек и алертов.
 
-## Enablement
+## Включение
 
-Tracing is controlled by deployment environment variables:
+Трассировка управляется переменными окружения развёртывания:
 
-| Variable | Meaning | Default |
+| Переменная | Значение | По умолчанию |
 | --- | --- | --- |
-| `GATEWAY_OTEL_ENABLED` | Enables OTLP trace export and FastAPI instrumentation | `false` |
-| `GATEWAY_OTEL_SERVICE_NAME` | OpenTelemetry `service.name` resource attribute | `llm-gateway` |
-| `GATEWAY_OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP/gRPC collector endpoint | `http://otel-collector:4317` |
-| `GATEWAY_OTEL_SAMPLE_RATIO` | Trace sampling ratio from `0.0` to `1.0` | `1.0` |
-| `GATEWAY_OTEL_FASTAPI_EXCLUDED_URLS` | Comma-separated FastAPI instrumentation exclusions | `/gateway/metrics,/metrics,/health,/$` |
+| `GATEWAY_OTEL_ENABLED` | Включает экспорт трасс по OTLP и инструментацию FastAPI | `false` |
+| `GATEWAY_OTEL_SERVICE_NAME` | Ресурсный атрибут OpenTelemetry `service.name` | `llm-gateway` |
+| `GATEWAY_OTEL_EXPORTER_OTLP_ENDPOINT` | Эндпоинт коллектора OTLP/gRPC | `http://otel-collector:4317` |
+| `GATEWAY_OTEL_SAMPLE_RATIO` | Доля сэмплирования трасс от `0.0` до `1.0` | `1.0` |
+| `GATEWAY_OTEL_FASTAPI_EXCLUDED_URLS` | Исключения инструментации FastAPI, через запятую | `/gateway/metrics,/metrics,/health,/$` |
 
-For `deploy/gateway/docker-compose.yaml`, traces are sent inside the gateway
-compose network through:
+Для `deploy/gateway/docker-compose.yaml` трассы отправляются внутри
+compose-сети шлюза через:
 
 ```text
 GATEWAY_OTEL_EXPORTER_OTLP_ENDPOINT=http://llm-gateway-otel-collector:4317
 ```
 
-The collector then exports to Tempo at `llm-gateway-tempo:4317` inside the
-gateway compose network.
+Далее коллектор экспортирует их в Tempo на `llm-gateway-tempo:4317` внутри
+compose-сети шлюза.
 
-## Span Model
+## Модель спанов
 
-When tracing is enabled, FastAPI instrumentation creates standard HTTP server
-spans for non-excluded routes. The gateway also creates domain spans for
-gateway request handling, session handling, backend calls, streaming, and
-Valkey operations.
+Когда трассировка включена, инструментация FastAPI создаёт стандартные
+серверные HTTP-спаны для не исключённых маршрутов. Шлюз дополнительно создаёт
+доменные спаны для обработки запроса, работы с сессией, вызовов бэкенда,
+потоковой передачи и операций Valkey.
 
 `llm.gateway.request`
 
-- Represents one gateway-handled chat completion request.
-- For non-streaming requests, the span ends when the final response is ready.
-- For streaming requests, the span ends after the stream iterator finishes,
-  fails, or is cancelled.
-- This is the primary span to inspect for request id, session classification,
-  model, total duration, response size, and final status.
+- Представляет один запрос chat completion, обработанный шлюзом.
+- Для непотоковых запросов спан завершается, когда готов финальный ответ.
+- Для потоковых запросов спан завершается после того, как итератор потока
+  закончился, упал с ошибкой или был отменён.
+- Это основной спан для просмотра идентификатора запроса, классификации сессии,
+  модели, общей длительности, размера ответа и финального статуса.
 
 `llm.backend.request`
 
-- Represents the HTTP request sent from the gateway to the OpenAI-compatible
-  backend.
-- For streaming requests, this covers backend response header acquisition, not
-  the full body stream.
-- Use this span to separate backend connection/response-start latency from
-  downstream streaming duration.
+- Представляет HTTP-запрос, отправленный шлюзом к OpenAI-совместимому бэкенду.
+- Для потоковых запросов покрывает получение заголовков ответа бэкенда, а не
+  весь поток тела.
+- Используйте этот спан, чтобы отделить задержку подключения/начала ответа
+  бэкенда от последующей длительности потоковой передачи.
 
 `llm.session.flow`
 
-- Represents gateway-side session handling for one chat completion request.
-- Covers runtime first-request detection and persisted dialog update under one
-  parent span.
-- Child `valkey.operation` spans show the concrete Valkey commands used by the
-  session tracker and session store.
+- Представляет работу с сессией на стороне шлюза для одного запроса chat
+  completion.
+- Покрывает рантайм-определение первого запроса и обновление сохранённого
+  диалога под одним родительским спаном.
+- Дочерние спаны `valkey.operation` показывают конкретные команды Valkey,
+  используемые трекером сессий и хранилищем сессий.
 
 `llm.stream_response`
 
-- Exists only for streaming chat completion requests.
-- Measures gateway iteration over backend stream chunks.
-- Records TTFT when the first non-empty chunk arrives.
-- Ends after the stream is fully consumed, fails, or is cancelled.
+- Существует только для потоковых запросов chat completion.
+- Измеряет итерирование шлюзом чанков потока от бэкенда.
+- Записывает TTFT, когда приходит первый непустой чанк.
+- Завершается после того, как поток полностью прочитан, упал с ошибкой или был
+  отменён.
 
 `valkey.operation`
 
-- Represents one Valkey operation issued by the gateway session layer.
-- Covers runtime session tracking, persisted session storage, session
-  inspection endpoints, and active-session counting for metrics scrapes.
-- The raw `tools/valkey_store.py` helper does not create spans by itself;
-  tracing stays in the gateway/session layer that owns the operation context.
-- Operation names currently include `get`, `set`, `set_if_absent`, `touch`,
-  `scan_count`, `scan_keys`, and `close`.
+- Представляет одну операцию Valkey, выполненную слоем сессий шлюза.
+- Покрывает рантайм-отслеживание сессий, сохранение сессий, эндпоинты просмотра
+  сессий и подсчёт активных сессий при сборе метрик.
+- Низкоуровневый хелпер `tools/valkey_store.py` сам спанов не создаёт;
+  трассировка остаётся в слое шлюза/сессий, которому принадлежит контекст
+  операции.
+- В настоящий момент имена операций включают `get`, `set`, `set_if_absent`,
+  `touch`, `scan_count`, `scan_keys` и `close`.
 
-## Important Attributes
+## Важные атрибуты
 
-The gateway sets stable domain attributes on its custom spans:
+Шлюз выставляет на своих кастомных спанах стабильные доменные атрибуты:
 
-| Attribute | Meaning |
+| Атрибут | Значение |
 | --- | --- |
-| `request.id` | Gateway request id, from incoming headers when provided or generated by the gateway |
-| `session.present` | Whether the request included `X-Session-ID` |
-| `session.id` | Session id, present only when the client supplied one |
-| `session.first_request` | Whether Valkey DB 0 marked this as the first observed request for the session |
-| `session.messages_saved` | Whether the chat messages block was persisted for this request |
-| `http.route` | Logical gateway route, for example `/v1/chat/completions` |
-| `http.method` | HTTP method |
-| `http.url` | Backend URL on `llm.backend.request` spans |
-| `http.status_code` | Final gateway/backend status code known to that span |
-| `llm.model` | Request `model`, bounded for label/cardinality safety |
-| `llm.stream` | Whether the request is a streaming request |
-| `llm.message_count` | Number of request messages for chat payloads |
-| `llm.max_completion_tokens` | Request `max_completion_tokens` when present |
-| `llm.request.body_bytes` | Size of the request body sent to the backend |
-| `llm.response.body_bytes` | Size of the response body/chunks observed by the gateway |
-| `llm.duration_sec` | Gateway end-to-end duration for the request |
-| `llm.stream_duration_sec` | Streaming iterator duration on `llm.stream_response` |
-| `llm.ttft_sec` | Time from gateway request receipt to the first non-empty streamed chunk |
-| `llm.chunk_count` | Number of non-empty chunks observed in a stream |
-| `llm.cancelled` | Whether the request or stream was cancelled |
-| `db.system` | Data store system, always `valkey` on `valkey.operation` spans |
-| `valkey.operation` | Valkey operation contract name |
-| `valkey.key_prefix` | Store key prefix, used to distinguish runtime and persisted session stores |
-| `valkey.record_present` | Whether the operation was bound to a single logical record id |
-| `valkey.pattern` | Scan pattern when the operation scans keys |
-| `valkey.scan_count` | SCAN count hint when applicable |
-| `valkey.found` | Whether a read-like operation found a matching record |
-| `valkey.created` | Whether `set_if_absent` created a new key |
-| `valkey.updated` | Whether a write/touch/persist operation updated a key |
-| `valkey.deleted` | Whether a delete operation removed a key |
-| `valkey.result_count` | Count returned or yielded by count/scan operations |
+| `request.id` | Идентификатор запроса шлюза: из входящих заголовков, если он передан, либо сгенерированный шлюзом |
+| `session.present` | Содержал ли запрос `X-Session-ID` |
+| `session.id` | Идентификатор сессии; присутствует только если его передал клиент |
+| `session.first_request` | Отметила ли Valkey DB 0 этот запрос как первый наблюдаемый для сессии |
+| `session.messages_saved` | Был ли для этого запроса сохранён блок сообщений чата |
+| `http.route` | Логический маршрут шлюза, например `/v1/chat/completions` |
+| `http.method` | HTTP-метод |
+| `http.url` | URL бэкенда на спанах `llm.backend.request` |
+| `http.status_code` | Финальный код статуса шлюза/бэкенда, известный этому спану |
+| `llm.model` | Поле `model` из запроса, обрезанное для безопасности по меткам/кардинальности |
+| `llm.stream` | Является ли запрос потоковым |
+| `llm.message_count` | Количество сообщений в запросе для чат-нагрузок |
+| `llm.max_completion_tokens` | Значение `max_completion_tokens` из запроса, когда оно есть |
+| `llm.request.body_bytes` | Размер тела запроса, отправленного бэкенду |
+| `llm.response.body_bytes` | Размер тела ответа/чанков, наблюдённых шлюзом |
+| `llm.duration_sec` | Сквозная длительность запроса на шлюзе |
+| `llm.stream_duration_sec` | Длительность работы потокового итератора на `llm.stream_response` |
+| `llm.ttft_sec` | Время от получения запроса шлюзом до первого непустого потокового чанка |
+| `llm.chunk_count` | Количество непустых чанков, наблюдённых в потоке |
+| `llm.cancelled` | Был ли запрос или поток отменён |
+| `db.system` | Система хранения данных; на спанах `valkey.operation` всегда `valkey` |
+| `valkey.operation` | Контрактное имя операции Valkey |
+| `valkey.key_prefix` | Префикс ключей хранилища; используется, чтобы различать рантайм- и сохраняющее хранилища сессий |
+| `valkey.record_present` | Была ли операция привязана к одной логической записи по её id |
+| `valkey.pattern` | Шаблон сканирования, когда операция сканирует ключи |
+| `valkey.scan_count` | Подсказка count для SCAN, когда применимо |
+| `valkey.found` | Нашла ли операция чтения подходящую запись |
+| `valkey.created` | Создал ли `set_if_absent` новый ключ |
+| `valkey.updated` | Обновила ли операция записи/touch/сохранения ключ |
+| `valkey.deleted` | Удалила ли операция удаления ключ |
+| `valkey.result_count` | Количество, возвращённое или выданное операциями подсчёта/сканирования |
 
-The gateway does not attach request or response message bodies to spans. Payload
-details belong to Loki event buckets, where request messages are intentionally
-omitted and sensitive headers are sanitized.
+Шлюз не прикрепляет к спанам тела сообщений запроса или ответа. Детали полезной
+нагрузки относятся к корзинам событий Loki, где сообщения запроса намеренно
+опускаются, а чувствительные заголовки маскируются.
 
-## Error Semantics
+## Семантика ошибок
 
-A custom span is marked with OpenTelemetry error status when:
+Кастомный спан помечается статусом ошибки OpenTelemetry, когда:
 
-- the gateway catches an exception while handling the request;
-- the client or upstream caller cancels the request;
-- no status code is available because the backend call failed before response;
-- the observed HTTP status code is `400` or higher.
+- шлюз перехватил исключение при обработке запроса;
+- клиент или вызывающая сторона выше отменила запрос;
+- код статуса недоступен, потому что вызов бэкенда упал до получения ответа;
+- наблюдаемый HTTP-статус равен `400` или выше.
 
-Exceptions are recorded on the active custom span. For streaming responses, a
-stream failure is recorded on both `llm.stream_response` and
-`llm.gateway.request` so the trace remains useful whether you inspect the stream
-span or the parent request span.
+Исключения записываются на активный кастомный спан. Для потоковых ответов сбой
+потока записывается и на `llm.stream_response`, и на `llm.gateway.request`,
+чтобы трасса оставалась полезной независимо от того, какой спан вы смотрите —
+потоковый или родительский спан запроса.
 
-## Correlation With Logs
+## Корреляция с логами
 
-Loki events include `trace_id` and `span_id` from the active OpenTelemetry
-context. This lets Grafana link a trace to the corresponding gateway log event.
+События Loki включают `trace_id` и `span_id` из активного контекста
+OpenTelemetry. Это позволяет Grafana связать трассу с соответствующим событием
+лога шлюза.
 
-Useful correlation fields:
+Полезные поля для корреляции:
 
-- `request_id` joins gateway logs, backend headers, and trace attributes.
-- `session_id` joins all turns for a client-provided session.
-- `trace_id` joins Loki events to Tempo traces.
-- `span_id` points at the active span when the log event was emitted.
+- `request_id` связывает логи шлюза, заголовки бэкенда и атрибуты трассы;
+- `session_id` связывает все ходы диалога для сессии, переданной клиентом;
+- `trace_id` связывает события Loki с трассами в Tempo;
+- `span_id` указывает на активный спан на момент записи события лога.
 
-For streaming generation responses, the response event is written only after the
-stream ends. The logged response payload is a valid JSON object that contains
-the ordered SSE events, extracted assistant text, TTFT, and end-to-end duration.
+Для потоковых ответов генерации событие ответа записывается только после
+завершения потока. Записанная в лог полезная нагрузка ответа — валидный
+JSON-объект, содержащий упорядоченные SSE-события, извлечённый текст ассистента,
+TTFT и сквозную длительность.
 
-## Reading A Trace
+## Как читать трассу
 
-For a slow first token in a streaming request:
+Для медленного первого токена в потоковом запросе:
 
-1. Open the trace in Grafana Tempo.
-2. Find `llm.gateway.request` and check `llm.duration_sec`.
-3. Find `llm.session.flow` and its child `valkey.operation` spans if session
-   handling looks slow.
-4. Find `llm.backend.request` and check whether the backend was slow to respond
-   with headers.
-5. Find `llm.stream_response` and check `llm.ttft_sec` and
+1. Откройте трассу в Grafana Tempo.
+2. Найдите `llm.gateway.request` и проверьте `llm.duration_sec`.
+3. Найдите `llm.session.flow` и его дочерние спаны `valkey.operation`, если
+   работа с сессией выглядит медленной.
+4. Найдите `llm.backend.request` и проверьте, не медленно ли бэкенд отдал
+   заголовки ответа.
+5. Найдите `llm.stream_response` и проверьте `llm.ttft_sec` и
    `llm.chunk_count`.
-6. Use the same `trace_id` in Loki to inspect sanitized request/response events.
+6. Используйте тот же `trace_id` в Loki, чтобы посмотреть очищенные события
+   запроса/ответа.
 
-For a failed request:
+Для неуспешного запроса:
 
-1. Inspect spans with error status.
-2. Check `http.status_code` when present.
-3. Check recorded exceptions on `llm.gateway.request` or
+1. Изучите спаны со статусом ошибки.
+2. Проверьте `http.status_code`, когда он есть.
+3. Проверьте записанные исключения на `llm.gateway.request` или
    `llm.stream_response`.
-4. Use `request_id` to find the `gateway_error` Loki event when the gateway
-   failed before a backend response was available.
+4. Используйте `request_id`, чтобы найти событие Loki `gateway_error`, когда
+   шлюз упал до того, как появился ответ бэкенда.
 
-## Limitations
+## Ограничения
 
-- Custom gateway/session/LLM spans are currently emitted for
+- Кастомные спаны шлюза/сессии/LLM в настоящий момент создаются для
   `/v1/chat/completions`.
-- Other `/v1/*` routes are still covered by FastAPI instrumentation when they
-  are not excluded by `GATEWAY_OTEL_FASTAPI_EXCLUDED_URLS`.
-- Valkey spans are emitted by session tracker/store wrappers, including
-  gateway session inspection endpoints and active-session counting.
-- TTFT is observable only for streaming chat completions.
-- Sampling can drop traces before export; set `GATEWAY_OTEL_SAMPLE_RATIO=1.0`
-  while debugging a specific request.
+- Остальные маршруты `/v1/*` по-прежнему покрыты инструментацией FastAPI, если
+  они не исключены через `GATEWAY_OTEL_FASTAPI_EXCLUDED_URLS`.
+- Спаны Valkey создаются обёртками трекера/хранилища сессий, включая эндпоинты
+  просмотра сессий шлюза и подсчёт активных сессий.
+- TTFT наблюдаем только для потоковых chat completions.
+- Сэмплирование может отбросить трассы до экспорта; задайте
+  `GATEWAY_OTEL_SAMPLE_RATIO=1.0` на время отладки конкретного запроса.

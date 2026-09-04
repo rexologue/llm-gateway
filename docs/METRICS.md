@@ -1,135 +1,136 @@
-# Metrics
+# Метрики
 
-The gateway exposes its own Prometheus metrics:
+Шлюз отдаёт собственные Prometheus-метрики:
 
 ```text
 GET /gateway/metrics
 ```
 
-It also proxies the backend metrics endpoint:
+Он также проксирует эндпоинт метрик бэкенда:
 
 ```text
 GET /metrics
 ```
 
-`GET /metrics` forwards to the backend's own `/metrics` endpoint and returns the
-backend response verbatim (status, body, and `content-type`). When the backend
-cannot be reached it returns `503` with `{"ok": false, "backend":
+`GET /metrics` перенаправляет запрос на собственный эндпоинт `/metrics` бэкенда
+и возвращает его ответ без изменений (статус, тело и `content-type`). Когда
+бэкенд недоступен, возвращается `503` с телом `{"ok": false, "backend":
 "unavailable", "detail": ...}`.
 
-The gateway-stack Prometheus still scrapes `/gateway/metrics` only, and backend
-metrics are scraped directly from the selected backend service (see
-[Backend Metrics](#backend-metrics)). The `/metrics` proxy is a convenience for
-reaching backend metrics through the gateway, not a scrape target for the
-gateway Prometheus.
+Prometheus в стеке шлюза по-прежнему собирает только `/gateway/metrics`, а
+метрики бэкенда собираются напрямую с выбранного сервиса бэкенда (см.
+[Метрики бэкенда](#метрики-бэкенда)). Прокси `/metrics` — это удобный способ
+добраться до метрик бэкенда через шлюз, а не цель сбора (scrape target) для
+Prometheus шлюза.
 
-Use metrics for aggregate behavior and alerting. Use [TRACES.md](TRACES.md) for
-per-request timing and span-level investigation.
+Используйте метрики для агрегированного поведения и алертов. Для тайминга
+отдельных запросов и разбора на уровне спанов см. [TRACES.md](TRACES.md).
 
-## Gateway Metrics
+## Метрики шлюза
 
 `gateway_requests_total`
 
-- Counter for all requests accepted by gateway route handlers.
-- Increments once after the gateway determines route and stream mode.
-- Includes malformed JSON chat requests that are answered directly by the
-  gateway with `400`.
-- Labels: `route`, `method`, `stream`.
+- Счётчик всех запросов, принятых обработчиками маршрутов шлюза.
+- Инкрементируется один раз после того, как шлюз определил маршрут и режим
+  потоковости.
+- Включает чат-запросы с некорректным JSON, на которые шлюз сам отвечает `400`.
+- Метки: `route`, `method`, `stream`.
 
 `gateway_responses_total`
 
-- Counter for terminal gateway outcomes.
-- `status_family` is a coarse HTTP family such as `2xx`, `4xx`, `5xx`, or
-  `unknown` when no response status was available.
-- `result` is `success`, `error`, or `cancelled`.
-- Labels: `route`, `method`, `stream`, `status_family`, `result`.
+- Счётчик терминальных исходов на шлюзе.
+- `status_family` — грубое семейство HTTP-статусов, например `2xx`, `4xx`,
+  `5xx`, либо `unknown`, когда статус ответа недоступен.
+- `result` — `success`, `error` или `cancelled`.
+- Метки: `route`, `method`, `stream`, `status_family`, `result`.
 
 `gateway_request_e2e_seconds`
 
-- End-to-end gateway latency from request receipt until the final non-streaming
-  response is ready, a streaming response is fully iterated, or the request
-  terminates with an error/cancellation.
-- For streaming requests, this measures full stream duration, not TTFT.
-- Labels: `route`, `method`, `stream`, `model`, `status_family`, `result`.
+- Сквозная (end-to-end) задержка шлюза: от получения запроса до момента, когда
+  готов финальный непотоковый ответ, потоковый ответ полностью проитерирован,
+  либо запрос завершился ошибкой/отменой.
+- Для потоковых запросов измеряется полная длительность потока, а не TTFT.
+- Метки: `route`, `method`, `stream`, `model`, `status_family`, `result`.
 
 `gateway_request_ttft_seconds`
 
-- Time from gateway request start to the first non-empty streamed backend chunk.
-- Recorded for streamed responses when a first non-empty chunk is observed.
-- Labels: `route`, `method`, `stream`, `model`, `status_family`, `result`.
+- Время от начала обработки запроса шлюзом до первого непустого потокового
+  чанка от бэкенда.
+- Записывается для потоковых ответов, когда обнаружен первый непустой чанк.
+- Метки: `route`, `method`, `stream`, `model`, `status_family`, `result`.
 
 `gateway_session_requests_total`
 
-- Counter for `/v1/chat/completions` requests with session classification.
-- `session_present=false` means the request did not include `X-Session-ID`.
-- `session_first_request=true` means the runtime session tracker did not see
-  this session id in Valkey DB 0 before this request.
-- Labels: `route`, `method`, `stream`, `session_present`,
+- Счётчик запросов `/v1/chat/completions` с классификацией по сессии.
+- `session_present=false` означает, что в запросе не было `X-Session-ID`.
+- `session_first_request=true` означает, что рантайм-трекер сессий не видел
+  этот идентификатор сессии в Valkey DB 0 до данного запроса.
+- Метки: `route`, `method`, `stream`, `session_present`,
   `session_first_request`.
 
 `gateway_session_request_e2e_seconds`
 
-- End-to-end latency for `/v1/chat/completions` requests with session
-  classification.
-- Recorded for ordinary and first-in-session chat completion requests. Use
-  `session_present=true,session_first_request=true` to isolate session-init
-  behavior. Use `session_present=true,session_first_request=false` for repeat
-  requests in known sessions.
-- Labels: `route`, `method`, `stream`, `model`, `session_present`,
+- Сквозная задержка запросов `/v1/chat/completions` с классификацией по сессии.
+- Записывается для обычных запросов chat completion и для первых запросов в
+  сессии. Используйте `session_present=true,session_first_request=true`, чтобы
+  выделить поведение при инициализации сессии. Используйте
+  `session_present=true,session_first_request=false` для повторных запросов в
+  уже известных сессиях.
+- Метки: `route`, `method`, `stream`, `model`, `session_present`,
   `session_first_request`, `status_family`, `result`.
 
 `gateway_session_request_ttft_seconds`
 
-- TTFT for streamed `/v1/chat/completions` requests with session classification.
-- Recorded when a non-empty streamed backend chunk is observed. Use
-  `session_present=true,session_first_request=true` to isolate session-init
-  TTFT. Use `session_present=true,session_first_request=false` for repeat
-  requests in known sessions.
-- Labels: `route`, `method`, `stream`, `model`, `session_present`,
+- TTFT для потоковых запросов `/v1/chat/completions` с классификацией по сессии.
+- Записывается, когда обнаружен непустой потоковый чанк от бэкенда. Используйте
+  `session_present=true,session_first_request=true`, чтобы выделить TTFT при
+  инициализации сессии. Используйте
+  `session_present=true,session_first_request=false` для повторных запросов в
+  уже известных сессиях.
+- Метки: `route`, `method`, `stream`, `model`, `session_present`,
   `session_first_request`, `status_family`, `result`.
 
 `gateway_active_sessions`
 
-- Gauge for the current number of runtime session keys in Valkey DB 0.
-- The value is refreshed when Prometheus scrapes `GET /gateway/metrics`.
-- It follows the runtime session TTL, not the persisted chat history TTL in
-  Valkey DB 1.
-- Labels: none.
+- Gauge с текущим числом рантайм-ключей сессий в Valkey DB 0.
+- Значение обновляется, когда Prometheus опрашивает `GET /gateway/metrics`.
+- Следует рантайм-TTL сессии, а не TTL сохранённой истории чатов в Valkey DB 1.
+- Метки: отсутствуют.
 
 `gateway_session_tracker_errors_total`
 
-- Valkey/Redis failures while checking, creating, or refreshing runtime session
-  keys in DB 0.
-- These errors affect first-request classification and session TTL refresh, but
-  do not by themselves mean the backend generation failed.
-- Labels: `operation`, `error_type`.
+- Сбои Valkey/Redis при проверке, создании или обновлении рантайм-ключей сессий
+  в DB 0.
+- Эти ошибки влияют на классификацию первого запроса и обновление TTL сессии, но
+  сами по себе не означают, что генерация на бэкенде провалилась.
+- Метки: `operation`, `error_type`.
 
 `gateway_loki_push_total`
 
-- Number of batch push attempts made by the gateway Loki publisher.
-- A successful push means Loki accepted the batch. It does not imply that a
-  particular request produced a log event.
-- Labels: `status`.
+- Количество попыток пакетной отправки, сделанных Loki-публишером шлюза.
+- Успешная отправка означает, что Loki принял батч. Она не означает, что
+  конкретный запрос породил событие лога.
+- Метки: `status`.
 
 `gateway_loki_events_dropped_total`
 
-- Number of log events dropped before they reached Loki.
-- Typical reason: local queue pressure.
-- Labels: `reason`.
+- Количество событий логов, отброшенных до того, как они дошли до Loki.
+- Типичная причина: давление на локальную очередь.
+- Метки: `reason`.
 
-The gateway intentionally does not use `session_id`, `request_id`, `trace_id`,
-or `span_id` as Prometheus labels.
+Шлюз намеренно не использует `session_id`, `request_id`, `trace_id` и `span_id`
+в качестве Prometheus-меток.
 
-## Backend Metrics
+## Метрики бэкенда
 
-Backend metrics are backend-specific and are scraped directly:
+Метрики бэкенда специфичны для бэкенда и собираются напрямую:
 
-- vLLM variant: `vllm:8000/metrics` through
-  `deploy/llm/configs/prometheus-vllm.yaml`.
-- SGLang variant: `sglang:30000/metrics` through
+- вариант vLLM: `vllm:8000/metrics` через
+  `deploy/llm/configs/prometheus-vllm.yaml`;
+- вариант SGLang: `sglang:30000/metrics` через
   `deploy/llm/configs/prometheus-sglang.yaml`.
 
-The gateway stack uses its own Prometheus at
-`deploy/gateway/configs/prometheus-gateway.yaml` and scrapes only
-`/gateway/metrics`. This keeps gateway metrics independent from backend-engine
-metrics.
+Стек шлюза использует собственный Prometheus с конфигурацией
+`deploy/gateway/configs/prometheus-gateway.yaml` и собирает только
+`/gateway/metrics`. Это делает метрики шлюза независимыми от метрик
+LLM-движка.

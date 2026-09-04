@@ -1,166 +1,182 @@
-# Dashboards
+# Дашборды
 
-Grafana is intentionally not part of the deployment stack. Dashboard JSON
-exports are kept in `observability/dashboards/` so they can be imported into an
-existing Grafana instance or another managed observability workspace.
+Grafana намеренно не входит в стек развёртывания. JSON-экспорты дашбордов
+хранятся в `observability/dashboards/`, чтобы их можно было импортировать в
+существующий экземпляр Grafana или в другой управляемый workspace
+наблюдаемости.
 
-## Files
+## Файлы
 
 `gateway-prometheus-overview.json`
 
-- Gateway-only Prometheus dashboard.
-- Uses `gateway_*` metrics from `GET /gateway/metrics`.
-- Includes filters for route, model, stream mode, result, status family, and
-  first-in-session classification.
+- Prometheus-дашборд только по шлюзу.
+- Использует метрики `gateway_*` из `GET /gateway/metrics`.
+- Содержит фильтры по маршруту, модели, режиму потоковости, результату,
+  семейству статусов и признаку первого запроса в сессии.
 
 `gateway-loki-events.json`
 
-- Gateway structured Loki event dashboard.
-- Uses Loki stream labels `app`, `bucket`, and `route`.
-- Shows generation requests, generation responses, warning responses, and
-  gateway errors.
+- Дашборд структурированных событий шлюза из Loki.
+- Использует метки потоков Loki `app`, `bucket` и `route`.
+- Показывает запросы генерации, ответы генерации, ответы с предупреждениями и
+  ошибки шлюза.
 
 `gateway-tempo-traces.json`
 
-- Gateway Tempo TraceQL lookup dashboard.
-- Uses current span names: `llm.gateway.request`, `llm.backend.request`,
-  `llm.stream_response`, `llm.session.flow`, and `valkey.operation`.
-- Filters by service, route, model, session id, request id, and latency
-  thresholds.
+- Дашборд поиска по трассам шлюза в Tempo через TraceQL.
+- Использует актуальные имена спанов: `llm.gateway.request`,
+  `llm.backend.request`, `llm.stream_response`, `llm.session.flow` и
+  `valkey.operation`.
+- Фильтрует по сервису, маршруту, модели, идентификатору сессии,
+  идентификатору запроса и порогам задержки.
 
 `gateway-session-viewer.json`
 
-- Full-dialog viewer for a single persisted chat session.
-- Backed entirely by the gateway (no Loki): the `Stored sessions` list calls
-  `GET /gateway/session_list` and the detail panels call
-  `GET /gateway/session/{session_id}`, both through the Infinity datasource with
-  relative urls.
-- Stored records are `{metadata, tools, messages}`. The `Dialog` and
-  `Declared tools` panels call `GET /gateway/session/{id}?pretty=1`, which adds
-  `messages_pretty`/`tools_pretty` (indented-JSON strings) to the response, and
-  render them in a wrapped table cell (`cellOptions.wrapText`). The gateway
-  indents those strings with non-breaking spaces, because a table cell keeps
-  newlines but collapses ordinary leading spaces — so the nesting stays visible.
-  (Grafana's structural JSON cell instead collapses Infinity's parsed value onto
-  one line, which is why the pretty strings are used.) Use a cell's inspect icon
-  for a full-height view.
-- `messages` holds the whole dialog: system/user/assistant turns, assistant
-  `tool_calls` made during the session, the `role: "tool"` results they
-  returned, and the final assistant turn. `tools` shows the declared schemas.
-- `metadata` reports `created_at`/`updated_at` plus read-time durations:
-  `age_sec` (lifetime since the first request), `idle_sec` (since the last
-  request), and `expires_in_sec` (remaining TTL). Session lifetime comes from
-  `created_at`, not the TTL, because the TTL is reset on every request.
-- Legacy flat records (written before the `{metadata, tools, messages}` shape)
-  are normalized on read, so old sessions still render — with empty `tools` and
-  no `created_at`/`age_sec`.
-- Enter a `session_id` in the textbox, or click a row in `Stored sessions`.
+- Просмотрщик полного диалога для одной сохранённой чат-сессии.
+- Целиком опирается на шлюз (без Loki): список `Stored sessions` вызывает
+  `GET /gateway/session_list`, а панели с деталями вызывают
+  `GET /gateway/session/{session_id}` — обе через датасорс Infinity с
+  относительными url.
+- Сохранённые записи имеют вид `{metadata, tools, messages}`. Панели `Dialog` и
+  `Declared tools` вызывают `GET /gateway/session/{id}?pretty=1`, который
+  добавляет в ответ `messages_pretty`/`tools_pretty` (строки с JSON и отступами),
+  и отображают их в ячейке таблицы с переносом (`cellOptions.wrapText`). Шлюз
+  делает отступы в этих строках неразрывными пробелами, потому что ячейка
+  таблицы сохраняет переводы строк, но «съедает» обычные ведущие пробелы — так
+  вложенность остаётся видимой. (Структурная JSON-ячейка Grafana, напротив,
+  сворачивает распарсенное значение Infinity в одну строку — именно поэтому
+  используются pretty-строки.) Для просмотра на всю высоту используйте иконку
+  инспекции ячейки.
+- `messages` содержит весь диалог: ходы system/user/assistant, вызовы
+  `tool_calls`, сделанные ассистентом в течение сессии, результаты с
+  `role: "tool"`, которые они вернули, и финальный ход ассистента. `tools`
+  показывает объявленные схемы.
+- `metadata` сообщает `created_at`/`updated_at` плюс вычисляемые на момент
+  чтения длительности: `age_sec` (время жизни с первого запроса), `idle_sec`
+  (с последнего запроса) и `expires_in_sec` (остаток TTL). Время жизни сессии
+  считается от `created_at`, а не от TTL, потому что TTL сбрасывается при
+  каждом запросе.
+- Устаревшие «плоские» записи (созданные до появления формы
+  `{metadata, tools, messages}`) нормализуются при чтении, поэтому старые
+  сессии по-прежнему отображаются — с пустыми `tools` и без
+  `created_at`/`age_sec`.
+- Введите `session_id` в текстовое поле или щёлкните строку в
+  `Stored sessions`.
 
 `backend-vllm-prometheus-overview.json`
 
-- vLLM backend, DCGM, and node-exporter dashboard.
-- Intended for the LLM-side Prometheus stack in `deploy/llm`.
-- Includes the per-vCPU host load panel.
+- Дашборд по бэкенду vLLM, DCGM и node-exporter.
+- Предназначен для Prometheus-стека на стороне LLM в `deploy/llm`.
+- Содержит панель загрузки хоста в расчёте на один vCPU.
 
 `backend-sglang-prometheus-overview.json`
 
-- SGLang backend, DCGM, and node-exporter dashboard.
-- Intended for the LLM-side Prometheus stack in `deploy/llm`.
+- Дашборд по бэкенду SGLang, DCGM и node-exporter.
+- Предназначен для Prometheus-стека на стороне LLM в `deploy/llm`.
 
-## Datasource UIDs
+## UID датасорсов
 
-The dashboards are templated. On import, select the matching datasource
-variables:
+Дашборды шаблонизированы. При импорте выберите соответствующие переменные
+датасорсов:
 
-- `DS_PROMETHEUS` for gateway or LLM Prometheus;
-- `DS_LOKI` for gateway Loki;
-- `DS_TEMPO` for gateway Tempo;
-- `DS_INFINITY` for the session viewer (`yesoreyeram-infinity-datasource`).
+- `DS_PROMETHEUS` — для Prometheus шлюза или LLM;
+- `DS_LOKI` — для Loki шлюза;
+- `DS_TEMPO` — для Tempo шлюза;
+- `DS_INFINITY` — для просмотрщика сессий (`yesoreyeram-infinity-datasource`).
 
-The session viewer needs the Infinity datasource, which must be created and
-configured before importing `gateway-session-viewer.json`. See
-[Session Viewer setup (Infinity)](#session-viewer-setup-infinity) below.
+Просмотрщику сессий нужен датасорс Infinity, который должен быть создан и
+настроен до импорта `gateway-session-viewer.json`. См.
+[Настройка просмотрщика сессий (Infinity)](#настройка-просмотрщика-сессий-infinity)
+ниже.
 
-The backend dashboards assume the LLM-side Prometheus scrapes the selected
-backend together with Node exporter and DCGM exporter.
+Дашборды по бэкендам предполагают, что Prometheus на стороне LLM собирает
+метрики выбранного бэкенда вместе с Node exporter и DCGM exporter.
 
-## Session Viewer setup (Infinity)
+## Настройка просмотрщика сессий (Infinity)
 
-The session viewer is the only dashboard that reads from the gateway's own HTTP
-API instead of Prometheus/Loki/Tempo. It uses the Infinity datasource
-(`yesoreyeram-infinity-datasource`), which runs its HTTP queries from the
-**Grafana backend**, not the browser. Every panel query uses a **relative** url
-(`/gateway/session_list`, `/gateway/session/${session_id}`), so the gateway
-address lives in one place: the datasource **Base URL**.
+Просмотрщик сессий — единственный дашборд, который читает данные из
+собственного HTTP API шлюза, а не из Prometheus/Loki/Tempo. Он использует
+датасорс Infinity (`yesoreyeram-infinity-datasource`), который выполняет свои
+HTTP-запросы с **бэкенда Grafana**, а не из браузера. Каждый запрос панели
+использует **относительный** url (`/gateway/session_list`,
+`/gateway/session/${session_id}`), поэтому адрес шлюза задаётся в одном месте —
+в **Base URL** датасорса.
 
-### 1. Install the plugin
+### 1. Установите плагин
 
-Install the Infinity plugin (`yesoreyeram-infinity-datasource`) in Grafana —
-Administration → Plugins, or `grafana-cli plugins install
-yesoreyeram-infinity-datasource`, or the `GF_INSTALL_PLUGINS` env var. Restart
-Grafana if prompted.
+Установите плагин Infinity (`yesoreyeram-infinity-datasource`) в Grafana —
+через Administration → Plugins, либо `grafana-cli plugins install
+yesoreyeram-infinity-datasource`, либо через переменную окружения
+`GF_INSTALL_PLUGINS`. Перезапустите Grafana, если она об этом попросит.
 
-### 2. Create the datasource
+### 2. Создайте датасорс
 
-Connections → Data sources → Add data source → **Infinity**. Give it a name you
-will recognise when picking `DS_INFINITY` on import (e.g.
-`Gateway / Session Viewer`). Leave **Default** off.
+Connections → Data sources → Add data source → **Infinity**. Дайте ему имя,
+которое вы узнаете при выборе `DS_INFINITY` во время импорта (например,
+`Gateway / Session Viewer`). Переключатель **Default** оставьте выключенным.
 
-Then walk the settings tabs:
+Затем пройдите по вкладкам настроек:
 
-**Authentication** — select **No Auth**. The `/gateway/session_*` routes are
-unauthenticated. (If you put an auth proxy in front of the gateway, pick the
-matching auth type here instead.)
+**Authentication** — выберите **No Auth**. Маршруты `/gateway/session_*` не
+требуют аутентификации. (Если перед шлюзом стоит auth-прокси, выберите здесь
+соответствующий тип аутентификации.)
 
-**URL, Headers & Params** — set **Base URL** to the gateway root as reachable
-*from the Grafana server*, with no trailing path:
+**URL, Headers & Params** — задайте **Base URL** равным корню шлюза так, как он
+доступен *с сервера Grafana*, без завершающего пути:
 
 ```
 http://<gateway-host>:<GATEWAY_HTTP_PORT>
 ```
 
-For example `http://host.docker.internal:9090` (`GATEWAY_HTTP_PORT` defaults to `9090`
-in `deploy/gateway/.env.example`), or `http://llm-gateway:8080` when Grafana
-shares the gateway's Docker network (container port is `8080`). Leave Custom
-HTTP Headers and URL Query Params empty; leave the URL settings toggles off.
+Например, `http://host.docker.internal:9090` (`GATEWAY_HTTP_PORT` по умолчанию
+равен `9090` в `deploy/gateway/.env.example`), либо `http://llm-gateway:8080`,
+когда Grafana находится в той же Docker-сети, что и шлюз (порт контейнера —
+`8080`). Custom HTTP Headers и URL Query Params оставьте пустыми; переключатели
+URL settings оставьте выключенными.
 
-**Network** — the defaults are fine: Timeout `60`s, TLS/SSL toggles off for
-plain `http`. If the gateway is behind HTTPS with a private CA, enable the
-relevant TLS option. Proxy Mode can stay "From environment variable / Default".
+**Network** — значения по умолчанию подходят: Timeout `60` с, переключатели
+TLS/SSL выключены для обычного `http`. Если шлюз работает за HTTPS с приватным
+CA, включите соответствующую опцию TLS. Proxy Mode можно оставить в положении
+«From environment variable / Default».
 
-**Security** — Infinity restricts which hosts it will query. Add your Base URL
-host under **Allowed hosts** (click Add, paste e.g.
-`http://host.docker.internal:9090`) and set **Query security** to **Deny** so Infinity
-only ever talks to the gateway. Leaving it on **Warn** with an empty allow-list
-also works (queries run with a warning) but is looser.
+**Security** — Infinity ограничивает, к каким хостам он готов обращаться.
+Добавьте хост вашего Base URL в **Allowed hosts** (нажмите Add и вставьте,
+например, `http://host.docker.internal:9090`) и установите **Query security** в
+**Deny**, чтобы Infinity общался только со шлюзом. Оставить **Warn** с пустым
+списком разрешённых тоже работает (запросы выполняются с предупреждением), но
+это менее строго.
 
-**Health check** — leave "Enable custom health check" off.
+**Health check** — оставьте «Enable custom health check» выключенным.
 
-Click **Save & test**. A green "Health check successful" confirms Grafana can
-reach the Base URL.
+Нажмите **Save & test**. Зелёное «Health check successful» подтверждает, что
+Grafana может достучаться до Base URL.
 
-### 3. Import the dashboard
+### 3. Импортируйте дашборд
 
-Import `gateway-session-viewer.json` and select this Infinity datasource for the
-`DS_INFINITY` variable. Open the dashboard, then either type a `session_id` in
-the textbox or click a row in **Stored sessions** to load a full dialog.
+Импортируйте `gateway-session-viewer.json` и выберите этот датасорс Infinity
+для переменной `DS_INFINITY`. Откройте дашборд и либо введите `session_id` в
+текстовое поле, либо щёлкните строку в **Stored sessions**, чтобы загрузить
+полный диалог.
 
-### Notes and troubleshooting
+### Замечания и устранение неполадок
 
-- **Relative urls, one address.** Panels never hardcode the host; they rely on
-  Base URL. Point the viewer at a different gateway by editing only the
-  datasource. Base URL must have no path (`/gateway/...` is added per panel).
-- **Server-side fetch.** Base URL must resolve from the Grafana container/host,
-  not from your laptop. `localhost` means the Grafana host. Prefer the Docker
-  service name (`http://llm-gateway:8080`) when co-located.
-- **Health check fails / empty panels.** Usually a wrong Base URL, a Query
-  security block (host not in Allowed hosts while set to Deny), or the gateway
-  not reachable from Grafana. Test directly:
+- **Относительные url, один адрес.** Панели никогда не задают хост жёстко; они
+  опираются на Base URL. Чтобы направить просмотрщик на другой шлюз, достаточно
+  изменить только датасорс. В Base URL не должно быть пути (`/gateway/...`
+  добавляется каждой панелью).
+- **Запрос выполняется на сервере.** Base URL должен разрешаться из
+  контейнера/хоста Grafana, а не с вашего ноутбука. `localhost` означает хост
+  Grafana. Когда сервисы расположены рядом, предпочтительно имя
+  Docker-сервиса (`http://llm-gateway:8080`).
+- **Health check не проходит / панели пустые.** Обычно это неверный Base URL,
+  блокировка Query security (хост не добавлен в Allowed hosts при значении
+  Deny) либо недоступность шлюза из Grafana. Проверьте напрямую:
   `curl http://<gateway-host>:<port>/gateway/session_list`.
-- **`session not found` (404).** The id is not in Valkey: sessions require the
-  `X-Session-ID` header on the original `/v1/chat/completions` call, and records
-  expire after `GATEWAY_SESSION_STORE_TTL` (15 days by default).
-- **Security.** Base URL exposes the raw stored dialogs, which can contain
-  sensitive prompt/response content, to anyone with access to this datasource.
-  Keep the gateway reachable only on a trusted network, or place authentication
-  in front of it and configure the Authentication tab accordingly.
+- **`session not found` (404).** Идентификатора нет в Valkey: для сессий нужен
+  заголовок `X-Session-ID` в исходном вызове `/v1/chat/completions`, а записи
+  истекают через `GATEWAY_SESSION_STORE_TTL` (по умолчанию 15 дней).
+- **Безопасность.** Base URL открывает сырые сохранённые диалоги, которые могут
+  содержать чувствительное содержимое промптов/ответов, каждому, у кого есть
+  доступ к этому датасорсу. Держите шлюз доступным только в доверенной сети либо
+  поставьте перед ним аутентификацию и настройте вкладку Authentication
+  соответствующим образом.
