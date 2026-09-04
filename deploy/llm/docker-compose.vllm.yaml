@@ -43,6 +43,10 @@ services:
     environment:
       BASE_URL: http://vllm:8000
 
+    # The backend speaks only the OpenAI-compatible contract; session
+    # persistence is a gateway feature and is verified by the gateway stack.
+    command: ["pytest", "-q", "tests/smoke/test_backend_contract.py"]
+
     networks:
       - llm
 

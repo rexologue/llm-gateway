@@ -250,6 +250,21 @@ docker compose --env-file .env -f docker-compose.yaml up -d --build && docker co
 контейнер. Он не останавливает бэкенд, шлюз, Prometheus, Loki, Tempo или
 экспортеры.
 
+Оба сервиса собираются из одного образа `deploy/tests/Dockerfile`, но
+запускают разные наборы, потому что у бэкенда и шлюза разные контракты:
+
+- `llm-smoke-tests` → `tests/smoke/test_backend_contract.py`: OpenAI-совместимый
+  контракт `/v1` (непотоковый ответ, SSE-стрим, tool calling, отсутствие
+  reasoning-трейса).
+- `gateway-smoke-tests` → тот же контрактный набор плюс
+  `tests/smoke/test_gateway_sessions.py`: персистенция диалога в Valkey через
+  `/gateway/session/{session_id}` и `/gateway/session_list`, включая проверку,
+  что assistant-турн сохраняется даже когда клиент перестаёт читать SSE сразу
+  после `[DONE]`.
+
+Набор выбирается через `command` сервиса в compose-файле, а не через переменные
+окружения.
+
 Промпт, модель, таймаут и опциональный API-ключ передаются в контейнер
 smoke-тестов через `env_file: .env`:
 
@@ -258,6 +273,7 @@ smoke-тестов через `env_file: .env`:
 - `SMOKE_TIMEOUT_SEC`
 - `SMOKE_API_KEY`
 - `SMOKE_CHECK_TOOLS`
+- `SMOKE_CHECK_THINKING`
 
 Задавайте `SMOKE_CHECK_TOOLS=true` только тогда, когда вызов инструментов
 входит в ожидаемый рантайм-контракт и выбранный бэкенд был запущен с поддержкой

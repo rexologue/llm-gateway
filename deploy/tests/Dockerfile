@@ -10,4 +10,7 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 
 COPY deploy/tests/smoke /app/tests/smoke
 
-CMD ["pytest", "-q", "tests/smoke"]
+# Default to the endpoint contract suite, which is valid against any
+# OpenAI-compatible endpoint. The gateway stack overrides the command to also
+# run the gateway-only session suite.
+CMD ["pytest", "-q", "tests/smoke/test_backend_contract.py"]

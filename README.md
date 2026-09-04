@@ -76,7 +76,20 @@ docker compose --env-file .env -f docker-compose.yaml up -d --build
 docker compose --env-file .env -f docker-compose.yaml --profile test run --rm gateway-smoke-tests
 ```
 
-Smoke-тесты всегда отправляют один обычный непотоковый запрос chat completion.
+Smoke-тесты разделены на два набора:
+
+- `deploy/tests/smoke/test_backend_contract.py` — только OpenAI-совместимый
+  контракт (`/v1`): непотоковый ответ, SSE-стрим, tool calling, отсутствие
+  reasoning-трейса. Он корректен для любого эндпоинта, поэтому его гоняют оба
+  стека — и бэкенд напрямую, и шлюз.
+- `deploy/tests/smoke/test_gateway_sessions.py` — только шлюз: персистенция
+  диалога в Valkey через `/gateway/session/{session_id}` и
+  `/gateway/session_list`. У бэкенда этих маршрутов нет, поэтому набор
+  запускается лишь в стеке шлюза.
+
+Какой набор выполняется, задаёт `command` соответствующего сервиса в compose,
+так что обе команды выше запускаются без дополнительных флагов.
+
 Если для развёртывания требуется вызов инструментов (tool calling), задайте
 `SMOKE_CHECK_TOOLS=true` в `deploy/llm/.env` и `deploy/gateway/.env`; тогда
 раннер также отправит запрос с вызовом инструмента и завершится с ошибкой, если

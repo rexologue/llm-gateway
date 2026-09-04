@@ -57,6 +57,16 @@ services:
     environment:
       BASE_URL: http://llm-gateway:8080
 
+    # The gateway must satisfy the same endpoint contract as a raw backend and,
+    # on top of it, persist every dialog it proxies.
+    command:
+      [
+        "pytest",
+        "-q",
+        "tests/smoke/test_backend_contract.py",
+        "tests/smoke/test_gateway_sessions.py",
+      ]
+
     networks:
       - gateway
 

@@ -6,6 +6,7 @@ import asyncio
 import time
 from typing import Any, AsyncIterator, Mapping, cast
 
+import anyio
 import httpx
 import orjson
 from fastapi import APIRouter, FastAPI, Request, Response
@@ -61,6 +62,25 @@ from app.utils import (
 )
 
 tracer = trace.get_tracer(TRACER_NAME)
+
+
+def _finalization_scope() -> anyio.CancelScope:
+    """Return a shielded cancel scope for terminal request bookkeeping.
+
+    A downstream consumer that stops reading cancels the ASGI task, and inside
+    a cancelled scope every plain ``await`` re-raises immediately. Terminal work
+    would then be silently dropped: no Loki event, no assistant turn persisted,
+    no backend connection closed. That is not an edge case for streaming, where
+    OpenAI-compatible clients routinely stop reading right after the ``[DONE]``
+    sentinel while the gateway is still awaiting the backend's end of stream.
+
+    Shielding keeps that bookkeeping running to completion. It is bounded work:
+    Loki submission only enqueues, and the session store runs against Valkey
+    with socket timeouts, so a shielded scope cannot hold a cancelled request
+    open indefinitely.
+    """
+
+    return anyio.CancelScope(shield=True)
 
 
 def _get_state(app: FastAPI) -> AppState:
@@ -237,6 +257,7 @@ def create_router() -> APIRouter:
         request_id = request_id_from_headers(headers_in)
         session_id = session_id_from_headers(headers_in)
         payload = parse_json_maybe(decoded_body)
+
         session_first_request = False
         messages_saved = False
         fallback_params = None
@@ -460,7 +481,9 @@ def create_router() -> APIRouter:
             )
         except asyncio.CancelledError as exc:
             duration_sec = time.perf_counter() - started_at
-            await log_context.error(exc, e2e_sec=duration_sec)
+            with _finalization_scope():
+                await log_context.error(exc, e2e_sec=duration_sec)
+
             metrics_context.response(
                 status_code=None,
                 cancelled=True,
@@ -705,7 +728,9 @@ async def _handle_stream_chat_completion(
                 cancelled=True,
             ),
         )
-        await log_context.error(exc, e2e_sec=duration_sec)
+        with _finalization_scope():
+            await log_context.error(exc, e2e_sec=duration_sec)
+
         metrics_context.response(
             status_code=None,
             cancelled=True,
@@ -842,48 +867,58 @@ async def _handle_stream_chat_completion(
                         None if stream_error is not None and not cancelled else status_code
                     )
 
-                    try:
-                        # Branch: stream completed without iterator errors.
-                        # We now have the full streamed backend response body,
-                        # so this is the single response logging point for
-                        # streaming chat completions.
-                        if stream_error is None:
-                            await log_context.response(
-                                status_code=status_code,
-                                response_headers=response_headers,
-                                response_bytes=response_bytes,
-                                response_text=body_text,
-                                e2e_sec=duration_sec,
-                                ttft_sec=ttft_sec,
-                            )
-
-                            await _persist_completed_session(
-                                state=state,
-                                session_id=session_id,
-                                payload=payload,
-                                stream=True,
-                                response_text=body_text,
-                            )
-
-                        # Branch: stream ended because the iterator raised or
-                        # was cancelled. The terminal event is an error because
-                        # the gateway could not observe a complete response.
-                        else:
-                            await log_context.error(stream_error, e2e_sec=duration_sec)
-
-                        metrics_context.response(
-                            status_code=metric_status_code,
-                            cancelled=cancelled,
-                            e2e_sec=duration_sec,
-                        )
-
-                    finally:
+                    # Shielded so a downstream disconnect cannot drop the
+                    # terminal event, the session write or the backend close.
+                    with _finalization_scope():
                         try:
-                            await backend_response.aclose()
+                            # Branch: the gateway observed the backend response
+                            # body, either because the stream ended normally or
+                            # because only the downstream consumer went away.
+                            # Both cases produced a real assistant turn, so this
+                            # is the single response logging point for streaming
+                            # chat completions and the point where the stored
+                            # session gains its assistant message.
+                            if stream_error is None or cancelled:
+                                await log_context.response(
+                                    status_code=status_code,
+                                    response_headers=response_headers,
+                                    response_bytes=response_bytes,
+                                    response_text=body_text,
+                                    e2e_sec=duration_sec,
+                                    ttft_sec=ttft_sec,
+                                    cancelled=cancelled,
+                                )
+
+                                await _persist_completed_session(
+                                    state=state,
+                                    session_id=session_id,
+                                    payload=payload,
+                                    stream=True,
+                                    response_text=body_text,
+                                )
+
+                            # Branch: the backend stream itself raised, so the
+                            # gateway never observed a complete response and the
+                            # terminal event is an error.
+                            else:
+                                await log_context.error(
+                                    stream_error,
+                                    e2e_sec=duration_sec,
+                                )
+
+                            metrics_context.response(
+                                status_code=metric_status_code,
+                                cancelled=cancelled,
+                                e2e_sec=duration_sec,
+                            )
 
                         finally:
-                            stream_span.end()
-                            request_span.end()
+                            try:
+                                await backend_response.aclose()
+
+                            finally:
+                                stream_span.end()
+                                request_span.end()
 
     return StreamingResponse(
         iterator(),
@@ -1014,7 +1049,9 @@ async def _handle_non_stream_chat_completion(
                     cancelled=True,
                 ),
             )
-            await log_context.error(exc, e2e_sec=duration_sec)
+            with _finalization_scope():
+                await log_context.error(exc, e2e_sec=duration_sec)
+
             metrics_context.response(
                 status_code=None,
                 cancelled=True,

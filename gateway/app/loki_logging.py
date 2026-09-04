@@ -44,6 +44,7 @@ class LokiRequestContext:
         response_text: str,
         e2e_sec: float,
         ttft_sec: float | None = None,
+        cancelled: bool = False,
     ) -> None:
         """Write the response event for this gateway request."""
 
@@ -55,6 +56,7 @@ class LokiRequestContext:
             response_text=response_text,
             e2e_sec=e2e_sec,
             ttft_sec=ttft_sec,
+            cancelled=cancelled,
         )
 
 
@@ -151,8 +153,15 @@ class GatewayLokiLogger:
         response_text: str,
         e2e_sec: float,
         ttft_sec: float | None = None,
+        cancelled: bool = False,
     ) -> None:
-        """Write a response event for a bound request context."""
+        """Write a response event for a bound request context.
+
+        ``cancelled`` marks a response the gateway fully observed from the
+        backend but could no longer deliver, because the downstream consumer
+        went away first. The event stays a response event: the backend did
+        answer, and the recorded body is the answer it produced.
+        """
 
         level = self._response_level(status_code)
         event = self._base_event(
@@ -166,6 +175,7 @@ class GatewayLokiLogger:
                 {
                     "status_code": status_code,
                     "warn_reason": self._warn_reason(status_code) if level == "warn" else None,
+                    "downstream_cancelled": True if cancelled else None,
                     "e2e_sec": round(e2e_sec, 6),
                     "ttft_sec": round(ttft_sec, 6) if ttft_sec is not None else None,
                     "body_bytes": len(response_bytes),
