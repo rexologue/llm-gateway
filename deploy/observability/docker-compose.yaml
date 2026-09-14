@@ -26,7 +26,7 @@ services:
 
     volumes:
       - ./configs/valkey.conf:/usr/local/etc/valkey/valkey.conf:ro
-      - valkey-data:/data
+      - "${OBSERVABILITY_VALKEY_VOLUME}:/data"
 
     networks:
       - observability
@@ -43,7 +43,7 @@ services:
 
     volumes:
       - ./configs/loki-config.yaml:/etc/loki/local-config.yaml:ro
-      - loki-data:/loki
+      - "${OBSERVABILITY_LOKI_VOLUME}:/loki"
 
     networks:
       - observability
@@ -64,7 +64,7 @@ services:
 
     volumes:
       - ./configs/prometheus.yaml:/etc/prometheus/prometheus.yml:ro
-      - prometheus-data:/prometheus
+      - "${OBSERVABILITY_PROMETHEUS_VOLUME}:/prometheus"
 
     networks:
       - observability
@@ -81,7 +81,7 @@ services:
 
     volumes:
       - ./configs/tempo.yaml:/etc/tempo/tempo.yaml:ro
-      - tempo-data:/var/tempo
+      - "${OBSERVABILITY_TEMPO_VOLUME}:/var/tempo"
 
     networks:
       - observability
@@ -106,13 +106,6 @@ services:
 
     networks:
       - observability
-
-
-volumes:
-  valkey-data:
-  loki-data:
-  prometheus-data:
-  tempo-data:
 
 
 networks:
