@@ -72,6 +72,17 @@ def create_router() -> APIRouter:
         if active_session_count is not None:
             state.metrics.set_active_sessions(active_session_count)
 
+        # Sampled here rather than on every request: the breaker state is what
+        # a scrape wants to know, and reading it costs nothing on this path.
+        state.metrics.set_dependency_up(
+            "valkey_runtime",
+            state.session_tracker.available,
+        )
+        state.metrics.set_dependency_up(
+            "valkey_store",
+            state.session_store.available,
+        )
+
         return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 

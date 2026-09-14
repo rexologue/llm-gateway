@@ -41,6 +41,26 @@ def _valkey_url_for_db(url: str, db: int) -> str:
     return urlunsplit((parts.scheme, parts.netloc, f"/{db}", parts.query, parts.fragment))
 
 
+def _require_engine_id() -> str:
+    """Return the engine identity of this gateway, refusing to guess one.
+
+    The value names this engine in every Loki stream and every trace resource,
+    so a deployment that forgets it does not fail loudly - it quietly merges the
+    telemetry of every machine into one anonymous heap, and the mistake surfaces
+    months later as a dashboard that cannot be split. Stopping at startup is the
+    cheaper failure.
+    """
+
+    engine_id = os.getenv("GATEWAY_ENGINE_ID", "").strip()
+
+    if not engine_id:
+        raise ValueError(
+            "GATEWAY_ENGINE_ID must be set: it labels this engine in Loki and Tempo"
+        )
+
+    return engine_id
+
+
 @dataclass(frozen=True, slots=True)
 class Settings:
     """Typed runtime configuration for the gateway process.
@@ -49,6 +69,9 @@ class Settings:
     The object is intentionally immutable because settings are read once during
     startup and should stay stable for the lifetime of the process.
     """
+
+    # Identity of the engine this gateway instance sits in front of.
+    engine_id: str
 
     # Backend routing and request shaping.
     backend_base_url: str
@@ -80,11 +103,14 @@ class Settings:
     otel_fastapi_excluded_urls: str
 
     # Session state.
+    sessions_enabled: bool
     valkey_url: str
     session_runtime_valkey_url: str
     session_key_prefix: str
     session_ttl_sec: int
     session_tracker_max_connections: int
+    valkey_breaker_failures: int
+    valkey_breaker_cooldown_sec: float
 
     # Persisted chat sessions.
     session_store_valkey_url: str
@@ -114,6 +140,9 @@ class Settings:
         )
 
         return cls(
+            # Identity of the engine this gateway instance sits in front of.
+            engine_id=_require_engine_id(),
+
             # Backend routing and request shaping.
             backend_base_url=os.getenv(
                 "GATEWAY_BACKEND_BASE_URL",
@@ -168,6 +197,7 @@ class Settings:
             ),
 
             # Session state.
+            sessions_enabled=_get_bool_env("GATEWAY_SESSIONS_ENABLED", True),
             valkey_url=valkey_url,
             session_runtime_valkey_url=_valkey_url_for_db(valkey_url, 0),
             session_key_prefix=os.getenv(
@@ -177,6 +207,12 @@ class Settings:
             session_ttl_sec=int(os.getenv("GATEWAY_SESSION_TTL", "180")),
             session_tracker_max_connections=int(
                 os.getenv("GATEWAY_SESSION_TRACKER_MAX_CONNECTIONS", "256")
+            ),
+            valkey_breaker_failures=int(
+                os.getenv("GATEWAY_VALKEY_BREAKER_FAILURES", "3")
+            ),
+            valkey_breaker_cooldown_sec=float(
+                os.getenv("GATEWAY_VALKEY_BREAKER_COOLDOWN_SEC", "30")
             ),
 
             # Persisted chat sessions.

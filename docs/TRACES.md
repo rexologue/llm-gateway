@@ -12,24 +12,42 @@
 ## Включение
 
 Трассировка управляется переменными окружения развёртывания:
-
 | Переменная | Значение | По умолчанию |
 | --- | --- | --- |
 | `GATEWAY_OTEL_ENABLED` | Включает экспорт трасс по OTLP и инструментацию FastAPI | `false` |
 | `GATEWAY_OTEL_SERVICE_NAME` | Ресурсный атрибут OpenTelemetry `service.name` | `llm-gateway` |
+| `GATEWAY_ENGINE_ID` | Ресурсный атрибут `service.instance.id`; обязательная переменная, без неё шлюз не стартует | не задано |
 | `GATEWAY_OTEL_EXPORTER_OTLP_ENDPOINT` | Эндпоинт коллектора OTLP/gRPC | `http://otel-collector:4317` |
 | `GATEWAY_OTEL_SAMPLE_RATIO` | Доля сэмплирования трасс от `0.0` до `1.0` | `1.0` |
 | `GATEWAY_OTEL_FASTAPI_EXCLUDED_URLS` | Исключения инструментации FastAPI, через запятую | `/gateway/metrics,/metrics,/health,/$` |
 
-Для `deploy/gateway/docker-compose.yaml` трассы отправляются внутри
-compose-сети шлюза через:
+Трассы уходят в **центральный** OpenTelemetry Collector из
+`deploy/observability`, который стоит на другой машине и адресуется по IP:
 
 ```text
-GATEWAY_OTEL_EXPORTER_OTLP_ENDPOINT=http://llm-gateway-otel-collector:4317
+GATEWAY_OTEL_EXPORTER_OTLP_ENDPOINT=http://10.0.0.100:4317
 ```
 
-Далее коллектор экспортирует их в Tempo на `llm-gateway-tempo:4317` внутри
-compose-сети шлюза.
+Далее коллектор экспортирует их в Tempo внутри своей compose-сети.
+
+## Разделение по движкам
+
+Tempo принимает трассы по push, поэтому метка приезжает вместе с самими
+спанами: шлюз кладёт `GATEWAY_ENGINE_ID` в ресурсный атрибут
+`service.instance.id`. Никакой настройки на стороне Tempo или коллектора для
+этого не нужно.
+
+`service.name` при этом остаётся одинаковым на всех шлюзах — это один сервис с
+N экземплярами, а не N разных сервисов, которые сервисному представлению Tempo
+было бы нечем связать.
+
+Фильтр по одному движку в TraceQL:
+
+```text
+{ resource.service.name = "llm-gateway" && resource.service.instance.id = "rtx6000a-8001" }
+```
+
+В дашборде `gateway-tempo-traces.json` это переменная `engine`.
 
 ## Модель спанов
 
@@ -86,7 +104,6 @@ compose-сети шлюза.
 ## Важные атрибуты
 
 Шлюз выставляет на своих кастомных спанах стабильные доменные атрибуты:
-
 | Атрибут | Значение |
 | --- | --- |
 | `request.id` | Идентификатор запроса шлюза: из входящих заголовков, если он передан, либо сгенерированный шлюзом |
@@ -120,6 +137,12 @@ compose-сети шлюза.
 | `valkey.updated` | Обновила ли операция записи/touch/сохранения ключ |
 | `valkey.deleted` | Удалила ли операция удаления ключ |
 | `valkey.result_count` | Количество, возвращённое или выданное операциями подсчёта/сканирования |
+
+Отказы Valkey записываются событиями `session_tracker.error` и
+`session_store.error` с атрибутами `operation` и `error.type`. Когда вызов не
+ушёл в сеть вовсе — предохранитель открыт или `GATEWAY_SESSIONS_ENABLED=false`
+— `error.type` равен `ValkeyUnavailable`, что отличает «не смогли достучаться»
+от «не пытались».
 
 Шлюз не прикрепляет к спанам тела сообщений запроса или ответа. Детали полезной
 нагрузки относятся к корзинам событий Loki, где сообщения запроса намеренно

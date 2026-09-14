@@ -1,0 +1,120 @@
+# Central observability and session state for the whole fleet.
+#
+# This stack runs ONCE, on one machine. Every gateway pushes to it (Loki, OTLP,
+# Valkey) and it pulls from every gateway (Prometheus). Splitting it out of the
+# gateway stack is what lets one session survive a round-robin balancer: all
+# gateways append to the same Valkey record, so a dialog whose turns landed on
+# different machines is still one transcript.
+#
+# Valkey is here rather than in deploy/gateway because it must be shared. A
+# gateway deployed without this stack keeps proxying - it just records nothing.
+#
+# Ports are published on OBSERVABILITY_HOST, which must be an address the engine
+# machines can reach. None of these services authenticate by default: keep them
+# on a private network, and set `requirepass` in configs/valkey.conf, since the
+# session store holds full dialog text.
+
+services:
+  valkey:
+    image: ${OBSERVABILITY_VALKEY_IMAGE}
+    container_name: ${OBSERVABILITY_VALKEY_CONTAINER_NAME}
+    restart: unless-stopped
+    command: ["valkey-server", "/usr/local/etc/valkey/valkey.conf"]
+
+    ports:
+      - "${OBSERVABILITY_HOST}:${OBSERVABILITY_VALKEY_PORT}:6379"
+
+    volumes:
+      - ./configs/valkey.conf:/usr/local/etc/valkey/valkey.conf:ro
+      - valkey-data:/data
+
+    networks:
+      - observability
+
+
+  loki:
+    image: ${OBSERVABILITY_LOKI_IMAGE}
+    container_name: ${OBSERVABILITY_LOKI_CONTAINER_NAME}
+    restart: unless-stopped
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+
+    ports:
+      - "${OBSERVABILITY_HOST}:${OBSERVABILITY_LOKI_HTTP_PORT}:3100"
+
+    volumes:
+      - ./configs/loki-config.yaml:/etc/loki/local-config.yaml:ro
+      - loki-data:/loki
+
+    networks:
+      - observability
+
+
+  prometheus:
+    image: ${OBSERVABILITY_PROMETHEUS_IMAGE}
+    container_name: ${OBSERVABILITY_PROMETHEUS_CONTAINER_NAME}
+    restart: unless-stopped
+
+    ports:
+      - "${OBSERVABILITY_HOST}:${OBSERVABILITY_PROMETHEUS_HTTP_PORT}:9090"
+
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+
+    volumes:
+      - ./configs/prometheus.yaml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+
+    networks:
+      - observability
+
+
+  tempo:
+    image: ${OBSERVABILITY_TEMPO_IMAGE}
+    container_name: ${OBSERVABILITY_TEMPO_CONTAINER_NAME}
+    restart: unless-stopped
+    command: ["-target=all", "-config.file=/etc/tempo/tempo.yaml"]
+
+    ports:
+      - "${OBSERVABILITY_HOST}:${OBSERVABILITY_TEMPO_HTTP_PORT}:3200"
+
+    volumes:
+      - ./configs/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo-data:/var/tempo
+
+    networks:
+      - observability
+
+
+  otel-collector:
+    image: ${OBSERVABILITY_OTEL_COLLECTOR_IMAGE}
+    container_name: ${OBSERVABILITY_OTEL_COLLECTOR_CONTAINER_NAME}
+    restart: unless-stopped
+    command: ["--config=/etc/otelcol/config.yaml"]
+
+    depends_on:
+      tempo:
+        condition: service_started
+
+    ports:
+      - "${OBSERVABILITY_HOST}:${OBSERVABILITY_OTEL_GRPC_PORT}:4317"
+      - "${OBSERVABILITY_HOST}:${OBSERVABILITY_OTEL_HEALTH_PORT}:13133"
+
+    volumes:
+      - ./configs/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+
+    networks:
+      - observability
+
+
+volumes:
+  valkey-data:
+  loki-data:
+  prometheus-data:
+  tempo-data:
+
+
+networks:
+  observability:
+    driver: bridge

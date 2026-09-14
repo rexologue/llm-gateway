@@ -18,6 +18,7 @@ import pytest
 from smoke_common import (
     BASE_URL,
     CHECK_TOOLS,
+    SESSIONS_ENABLED,
     TIMEOUT_SEC,
     TOOL_NAME,
     WEATHER_TOOL,
@@ -27,6 +28,12 @@ from smoke_common import (
     post_chat,
     request_headers,
     stream_chat,
+)
+
+
+pytestmark = pytest.mark.skipif(
+    not SESSIONS_ENABLED,
+    reason="GATEWAY_SESSIONS_ENABLED=false: this gateway runs without the session store",
 )
 
 

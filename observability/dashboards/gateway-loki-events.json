@@ -72,7 +72,7 @@
             "type": "loki",
             "uid": "${DS_LOKI}"
           },
-          "expr": "{app=~\"$app\", bucket=\"request_generation\", route=~\"$route\"} | json | session_id=~\"$session_id\" | request_id=~\"$request_id\" | line_format \"request_id={{.request_id}} first={{.session_first_request}} messages_cnt={{.messages_count}} model={{.request_json_model}} max_tokens={{.request_json_max_tokens}} max_completion_tokens={{.request_json_max_completion_tokens}} n={{.request_json_n}} temperature={{.request_json_temperature}} top_p={{.request_json_top_p}} top_k={{.request_json_top_k}} min_p={{.request_json_min_p}} seed={{.request_json_seed}} stop={{.request_json_stop}} presence_penalty={{.request_json_presence_penalty}} frequency_penalty={{.request_json_frequency_penalty}} repetition_penalty={{.request_json_repetition_penalty}} logprobs={{.request_json_logprobs}} top_logprobs={{.request_json_top_logprobs}}\""
+          "expr": "{app=~\"$app\", engine=~\"$engine\", bucket=\"request_generation\", route=~\"$route\"} | json | session_id=~\"$session_id\" | request_id=~\"$request_id\" | line_format \"request_id={{.request_id}} first={{.session_first_request}} messages_cnt={{.messages_count}} model={{.request_json_model}} max_tokens={{.request_json_max_tokens}} max_completion_tokens={{.request_json_max_completion_tokens}} n={{.request_json_n}} temperature={{.request_json_temperature}} top_p={{.request_json_top_p}} top_k={{.request_json_top_k}} min_p={{.request_json_min_p}} seed={{.request_json_seed}} stop={{.request_json_stop}} presence_penalty={{.request_json_presence_penalty}} frequency_penalty={{.request_json_frequency_penalty}} repetition_penalty={{.request_json_repetition_penalty}} logprobs={{.request_json_logprobs}} top_logprobs={{.request_json_top_logprobs}}\""
         }
       ],
       "title": "Generation Requests",
@@ -113,7 +113,7 @@
             "type": "loki",
             "uid": "${DS_LOKI}"
           },
-          "expr": "{app=~\"$app\", bucket=\"response_generation\", route=~\"$route\"} | json | session_id=~\"$session_id\" | request_id=~\"$request_id\" | line_format \"request_id={{.request_id}} first={{.session_first_request}} status={{.status_code}} level={{.level}} e2e={{.e2e_sec}} ttft={{.ttft_sec}} stream={{.stream}} body_bytes={{.body_bytes}} assistant_text={{.assistant_text}}\""
+          "expr": "{app=~\"$app\", engine=~\"$engine\", bucket=\"response_generation\", route=~\"$route\"} | json | session_id=~\"$session_id\" | request_id=~\"$request_id\" | line_format \"request_id={{.request_id}} first={{.session_first_request}} status={{.status_code}} level={{.level}} e2e={{.e2e_sec}} ttft={{.ttft_sec}} stream={{.stream}} body_bytes={{.body_bytes}} assistant_text={{.assistant_text}}\""
         }
       ],
       "title": "Generation Responses",
@@ -141,7 +141,7 @@
             "type": "loki",
             "uid": "${DS_LOKI}"
           },
-          "expr": "{app=~\"$app\", route=~\"$route\"} | json | session_id=~\"$session_id\" | request_id=~\"$request_id\" | level=~\"warn|error\" | line_format \"bucket={{.bucket}} level={{.level}} request_id={{.request_id}} route={{.route}} status={{.status_code}} warn_reason={{.warn_reason}} error={{.error_type}} {{.error_message}}\""
+          "expr": "{app=~\"$app\", engine=~\"$engine\", route=~\"$route\"} | json | session_id=~\"$session_id\" | request_id=~\"$request_id\" | level=~\"warn|error\" | line_format \"bucket={{.bucket}} level={{.level}} request_id={{.request_id}} route={{.route}} status={{.status_code}} warn_reason={{.warn_reason}} error={{.error_type}} {{.error_message}}\""
         }
       ],
       "options": {
@@ -193,6 +193,24 @@
           "text": "llm-gateway",
           "value": "llm-gateway"
         }
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "loki",
+          "uid": "${DS_LOKI}"
+        },
+        "definition": "label_values({app=~\"$app\"}, engine)",
+        "description": "Движок (GATEWAY_ENGINE_ID): один процесс шлюза перед одним процессом движка.",
+        "includeAll": true,
+        "label": "Движок",
+        "multi": true,
+        "name": "engine",
+        "options": [],
+        "query": "label_values({app=~\"$app\"}, engine)",
+        "refresh": 2,
+        "sort": 1,
+        "type": "query"
       },
       {
         "name": "route",

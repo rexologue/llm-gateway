@@ -44,6 +44,24 @@
         "refresh": 1
       },
       {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "definition": "label_values(gateway_requests_total, engine)",
+        "description": "Движок (GATEWAY_ENGINE_ID): один процесс шлюза перед одним процессом движка.",
+        "includeAll": true,
+        "label": "Движок",
+        "multi": true,
+        "name": "engine",
+        "options": [],
+        "query": "label_values(gateway_requests_total, engine)",
+        "refresh": 2,
+        "sort": 1,
+        "type": "query"
+      },
+      {
         "name": "route",
         "type": "query",
         "label": "route",
@@ -209,7 +227,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "gateway_active_sessions",
+          "expr": "gateway_active_sessions{engine=~\"$engine\"}",
           "legendFormat": "current",
           "range": true,
           "editorMode": "code"
@@ -265,7 +283,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(gateway_requests_total{route=~\"$route\",stream=~\"$stream\"}[$__rate_interval]))",
+          "expr": "sum(rate(gateway_requests_total{engine=~\"$engine\",route=~\"$route\",stream=~\"$stream\"}[$__rate_interval]))",
           "legendFormat": "requests",
           "range": true,
           "editorMode": "code"
@@ -321,7 +339,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(gateway_responses_total{route=~\"$route\",stream=~\"$stream\",result=\"error\"}[$__rate_interval]))",
+          "expr": "sum(rate(gateway_responses_total{engine=~\"$engine\",route=~\"$route\",stream=~\"$stream\",result=\"error\"}[$__rate_interval]))",
           "legendFormat": "errors",
           "range": true,
           "editorMode": "code"
@@ -377,7 +395,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_request_ttft_seconds_bucket{route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_request_ttft_seconds_bucket{engine=~\"$engine\",route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
           "legendFormat": "p95",
           "range": true,
           "editorMode": "code"
@@ -433,7 +451,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_request_e2e_seconds_bucket{route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_request_e2e_seconds_bucket{engine=~\"$engine\",route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
           "legendFormat": "p95",
           "range": true,
           "editorMode": "code"
@@ -489,7 +507,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_session_request_ttft_seconds_bucket{route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",session_present=\"true\",session_first_request=\"true\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_session_request_ttft_seconds_bucket{engine=~\"$engine\",route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",session_present=\"true\",session_first_request=\"true\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
           "legendFormat": "p95",
           "range": true,
           "editorMode": "code"
@@ -545,7 +563,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_session_request_e2e_seconds_bucket{route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",session_present=\"true\",session_first_request=\"true\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_session_request_e2e_seconds_bucket{engine=~\"$engine\",route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",session_present=\"true\",session_first_request=\"true\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
           "legendFormat": "p95",
           "range": true,
           "editorMode": "code"
@@ -601,7 +619,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "100 * sum(rate(gateway_session_requests_total{route=\"/v1/chat/completions\",stream=~\"$stream\",session_present=\"true\",session_first_request=\"true\"}[$__rate_interval])) / clamp_min(sum(rate(gateway_session_requests_total{route=\"/v1/chat/completions\",stream=~\"$stream\",session_present=\"true\"}[$__rate_interval])), 1e-9)",
+          "expr": "100 * sum(rate(gateway_session_requests_total{engine=~\"$engine\",route=\"/v1/chat/completions\",stream=~\"$stream\",session_present=\"true\",session_first_request=\"true\"}[$__rate_interval])) / clamp_min(sum(rate(gateway_session_requests_total{engine=~\"$engine\",route=\"/v1/chat/completions\",stream=~\"$stream\",session_present=\"true\"}[$__rate_interval])), 1e-9)",
           "legendFormat": "first share",
           "range": true,
           "editorMode": "code"
@@ -669,7 +687,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "gateway_active_sessions",
+          "expr": "gateway_active_sessions{engine=~\"$engine\"}",
           "legendFormat": "active",
           "range": true,
           "editorMode": "code"
@@ -711,7 +729,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(gateway_inflight_requests)",
+          "expr": "sum(gateway_inflight_requests{engine=~\"$engine\"})",
           "legendFormat": "in-flight",
           "range": true,
           "editorMode": "code"
@@ -754,21 +772,21 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.50, sum by (le) (rate(gateway_request_ttft_seconds_bucket{route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(gateway_request_ttft_seconds_bucket{engine=~\"$engine\",route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
           "legendFormat": "p50",
           "range": true,
           "editorMode": "code"
         },
         {
           "refId": "B",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_request_ttft_seconds_bucket{route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_request_ttft_seconds_bucket{engine=~\"$engine\",route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
           "legendFormat": "p95",
           "range": true,
           "editorMode": "code"
         },
         {
           "refId": "C",
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(gateway_request_ttft_seconds_bucket{route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(gateway_request_ttft_seconds_bucket{engine=~\"$engine\",route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
           "legendFormat": "p99",
           "range": true,
           "editorMode": "code"
@@ -811,21 +829,21 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.50, sum by (le) (rate(gateway_request_e2e_seconds_bucket{route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(gateway_request_e2e_seconds_bucket{engine=~\"$engine\",route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
           "legendFormat": "p50",
           "range": true,
           "editorMode": "code"
         },
         {
           "refId": "B",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_request_e2e_seconds_bucket{route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_request_e2e_seconds_bucket{engine=~\"$engine\",route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
           "legendFormat": "p95",
           "range": true,
           "editorMode": "code"
         },
         {
           "refId": "C",
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(gateway_request_e2e_seconds_bucket{route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(gateway_request_e2e_seconds_bucket{engine=~\"$engine\",route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
           "legendFormat": "p99",
           "range": true,
           "editorMode": "code"
@@ -868,21 +886,21 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.50, sum by (le) (rate(gateway_session_request_ttft_seconds_bucket{route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",session_present=\"true\",session_first_request=\"true\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(gateway_session_request_ttft_seconds_bucket{engine=~\"$engine\",route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",session_present=\"true\",session_first_request=\"true\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
           "legendFormat": "p50",
           "range": true,
           "editorMode": "code"
         },
         {
           "refId": "B",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_session_request_ttft_seconds_bucket{route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",session_present=\"true\",session_first_request=\"true\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_session_request_ttft_seconds_bucket{engine=~\"$engine\",route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",session_present=\"true\",session_first_request=\"true\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
           "legendFormat": "p95",
           "range": true,
           "editorMode": "code"
         },
         {
           "refId": "C",
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(gateway_session_request_ttft_seconds_bucket{route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",session_present=\"true\",session_first_request=\"true\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(gateway_session_request_ttft_seconds_bucket{engine=~\"$engine\",route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",session_present=\"true\",session_first_request=\"true\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
           "legendFormat": "p99",
           "range": true,
           "editorMode": "code"
@@ -925,21 +943,21 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.50, sum by (le) (rate(gateway_session_request_e2e_seconds_bucket{route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",session_present=\"true\",session_first_request=\"true\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(gateway_session_request_e2e_seconds_bucket{engine=~\"$engine\",route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",session_present=\"true\",session_first_request=\"true\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
           "legendFormat": "p50",
           "range": true,
           "editorMode": "code"
         },
         {
           "refId": "B",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_session_request_e2e_seconds_bucket{route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",session_present=\"true\",session_first_request=\"true\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_session_request_e2e_seconds_bucket{engine=~\"$engine\",route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",session_present=\"true\",session_first_request=\"true\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
           "legendFormat": "p95",
           "range": true,
           "editorMode": "code"
         },
         {
           "refId": "C",
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(gateway_session_request_e2e_seconds_bucket{route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",session_present=\"true\",session_first_request=\"true\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(gateway_session_request_e2e_seconds_bucket{engine=~\"$engine\",route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",session_present=\"true\",session_first_request=\"true\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
           "legendFormat": "p99",
           "range": true,
           "editorMode": "code"
@@ -995,14 +1013,14 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(gateway_requests_total{route=\"/v1/chat/completions\",stream=~\"$stream\"}[$__rate_interval]))",
+          "expr": "sum(rate(gateway_requests_total{engine=~\"$engine\",route=\"/v1/chat/completions\",stream=~\"$stream\"}[$__rate_interval]))",
           "legendFormat": "generation all",
           "range": true,
           "editorMode": "code"
         },
         {
           "refId": "B",
-          "expr": "sum(rate(gateway_session_requests_total{route=\"/v1/chat/completions\",stream=~\"$stream\",session_present=\"true\",session_first_request=\"true\"}[$__rate_interval]))",
+          "expr": "sum(rate(gateway_session_requests_total{engine=~\"$engine\",route=\"/v1/chat/completions\",stream=~\"$stream\",session_present=\"true\",session_first_request=\"true\"}[$__rate_interval]))",
           "legendFormat": "first=true",
           "range": true,
           "editorMode": "code"
@@ -1045,7 +1063,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.95, sum by (le, session_first_request) (rate(gateway_session_request_ttft_seconds_bucket{route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",session_present=\"true\",session_first_request=~\"$session_first_request\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le, session_first_request) (rate(gateway_session_request_ttft_seconds_bucket{engine=~\"$engine\",route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",session_present=\"true\",session_first_request=~\"$session_first_request\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
           "legendFormat": "first={{session_first_request}} p95",
           "range": true,
           "editorMode": "code"
@@ -1088,7 +1106,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.95, sum by (le, session_first_request) (rate(gateway_session_request_e2e_seconds_bucket{route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",session_present=\"true\",session_first_request=~\"$session_first_request\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le, session_first_request) (rate(gateway_session_request_e2e_seconds_bucket{engine=~\"$engine\",route=\"/v1/chat/completions\",model=~\"$model\",stream=~\"$stream\",session_present=\"true\",session_first_request=~\"$session_first_request\",result=\"success\",status_family=\"2xx\"}[$__rate_interval])))",
           "legendFormat": "first={{session_first_request}} p95",
           "range": true,
           "editorMode": "code"
@@ -1144,7 +1162,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (route, stream) (rate(gateway_requests_total{route=~\"$route\",stream=~\"$stream\"}[$__rate_interval]))",
+          "expr": "sum by (route, stream) (rate(gateway_requests_total{engine=~\"$engine\",route=~\"$route\",stream=~\"$stream\"}[$__rate_interval]))",
           "legendFormat": "{{route}} stream={{stream}}",
           "range": true,
           "editorMode": "code"
@@ -1187,7 +1205,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (status_family, result) (rate(gateway_responses_total{route=~\"$route\",stream=~\"$stream\",result=~\"$result\",status_family=~\"$status_family\"}[$__rate_interval]))",
+          "expr": "sum by (status_family, result) (rate(gateway_responses_total{engine=~\"$engine\",route=~\"$route\",stream=~\"$stream\",result=~\"$result\",status_family=~\"$status_family\"}[$__rate_interval]))",
           "legendFormat": "{{status_family}} {{result}}",
           "range": true,
           "editorMode": "code"
@@ -1243,7 +1261,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (status_family, result) (rate(gateway_responses_total{route=~\"$route\",stream=~\"$stream\",result!=\"success\",status_family=~\"$status_family\"}[$__rate_interval]))",
+          "expr": "sum by (status_family, result) (rate(gateway_responses_total{engine=~\"$engine\",route=~\"$route\",stream=~\"$stream\",result!=\"success\",status_family=~\"$status_family\"}[$__rate_interval]))",
           "legendFormat": "{{status_family}} {{result}}",
           "range": true,
           "editorMode": "code"
@@ -1286,7 +1304,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (operation, error_type) (rate(gateway_session_tracker_errors_total[$__rate_interval]))",
+          "expr": "sum by (operation, error_type) (rate(gateway_session_tracker_errors_total{engine=~\"$engine\"}[$__rate_interval]))",
           "legendFormat": "{{operation}} {{error_type}}",
           "range": true,
           "editorMode": "code"
@@ -1329,14 +1347,14 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (status) (rate(gateway_loki_push_total[$__rate_interval]))",
+          "expr": "sum by (status) (rate(gateway_loki_push_total{engine=~\"$engine\"}[$__rate_interval]))",
           "legendFormat": "push {{status}}",
           "range": true,
           "editorMode": "code"
         },
         {
           "refId": "B",
-          "expr": "sum by (reason) (rate(gateway_loki_events_dropped_total[$__rate_interval]))",
+          "expr": "sum by (reason) (rate(gateway_loki_events_dropped_total{engine=~\"$engine\"}[$__rate_interval]))",
           "legendFormat": "drop {{reason}}",
           "range": true,
           "editorMode": "code"

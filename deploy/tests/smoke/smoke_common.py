@@ -34,6 +34,14 @@ THINKING_PROMPT = os.getenv(
 TIMEOUT_SEC = float(os.getenv("SMOKE_TIMEOUT_SEC", "60"))
 API_KEY = os.getenv("SMOKE_API_KEY", "")
 CHECK_TOOLS = env_flag("SMOKE_CHECK_TOOLS")
+# Session persistence is optional: it needs the Valkey that lives in the
+# central observability stack, and a gateway is allowed to run without it.
+SESSIONS_ENABLED = os.getenv("GATEWAY_SESSIONS_ENABLED", "true").lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 CHECK_THINKING = env_flag("SMOKE_CHECK_THINKING")
 
 TOOL_NAME = "get_current_weather"

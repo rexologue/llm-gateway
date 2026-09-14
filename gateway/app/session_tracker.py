@@ -8,7 +8,7 @@ from opentelemetry import trace
 from redis.exceptions import RedisError
 
 from app.metrics import GatewayMetrics
-from app.tools.valkey_store import ValkeyJsonStore
+from app.tools.valkey_store import ValkeyJsonStore, ValkeyUnavailable
 from app.tracing import (
     SPAN_VALKEY_OPERATION,
     TRACER_NAME,
@@ -23,7 +23,13 @@ tracer = trace.get_tracer(TRACER_NAME)
 
 
 class SessionTracker:
-    """Track whether a session was already observed using Valkey sliding TTL."""
+    """Track whether a session was already observed using Valkey sliding TTL.
+
+    Valkey lives in the central observability stack, which a gateway is allowed
+    to run without. When it is absent the tracker reports every request as a
+    continuation rather than refusing to serve: first-request classification is
+    telemetry, and telemetry must not decide whether a chat completion happens.
+    """
 
     def __init__(
         self,
@@ -33,16 +39,29 @@ class SessionTracker:
         ttl_sec: int,
         max_connections: int,
         metrics: GatewayMetrics,
+        enabled: bool = True,
+        breaker_failures: int = 3,
+        breaker_cooldown_sec: float = 30.0,
     ) -> None:
         """Initialize the Valkey-backed runtime session store."""
 
         self.metrics = metrics
+        self.enabled = enabled
         self.store = ValkeyJsonStore(
             api_url=api_url,
             prefix=prefix,
             default_ttl_sec=ttl_sec,
             max_connections=max_connections,
+            breaker_failures=breaker_failures,
+            breaker_cooldown_sec=breaker_cooldown_sec,
         )
+
+
+    @property
+    def available(self) -> bool:
+        """Return whether session tracking is currently reaching Valkey."""
+
+        return self.enabled and self.store.available
 
 
     async def close(self) -> None:
@@ -66,7 +85,7 @@ class SessionTracker:
         last request, not on the original creation time.
         """
 
-        if session_id is None:
+        if session_id is None or not self.enabled:
             return False
 
         try:
@@ -105,6 +124,9 @@ class SessionTracker:
     async def active_session_count(self) -> int | None:
         """Return the current number of runtime session keys, if Valkey is available."""
 
+        if not self.enabled:
+            return None
+
         try:
             pattern = f"{self.store.prefix}*"
 
@@ -128,11 +150,20 @@ class SessionTracker:
 
 
     def _record_error(self, operation: str, exc: RedisError) -> None:
-        """Record a Valkey failure in logs, metrics, and the current trace."""
+        """Record a Valkey failure in logs, metrics, and the current trace.
+
+        A breaker that is already open is expected, not news: the outage it
+        stands for was logged when it was first detected, and warning again on
+        every request would bury the line that actually mattered.
+        """
 
         error_type = type(exc).__name__
         self.metrics.session_tracker_error(operation, exc)
-        logger.warning("Session tracker %s failed: %s", operation, exc)
+
+        if isinstance(exc, ValkeyUnavailable):
+            logger.debug("Session tracker %s skipped: %s", operation, exc)
+        else:
+            logger.warning("Session tracker %s failed: %s", operation, exc)
 
         add_current_span_error_event(
             "session_tracker.error",

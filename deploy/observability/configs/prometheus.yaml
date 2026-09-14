@@ -1,0 +1,61 @@
+# Central scrape config for the whole fleet.
+#
+# This is the ONE place that names engines. Loki and Tempo receive their labels
+# from the gateways themselves (pushed with the data), but Prometheus pulls, so
+# it has to be told where to go - and the friendly name is attached here rather
+# than inside the gateway, keeping the gateway ignorant of the Prometheus
+# exposition format.
+#
+# Two label families, deliberately different:
+#   engine - one gateway process in front of one engine process
+#   host   - one physical machine; node and GPU metrics belong to it, not to
+#            whichever of its engines happens to be listed first
+#
+# Adding a machine means adding one target to each job below. Prometheus is
+# started with --web.enable-lifecycle, so a reload needs no restart:
+#   curl -XPOST http://localhost:9091/-/reload
+
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  # The gateway's own metrics.
+  - job_name: gateway
+    metrics_path: /gateway/metrics
+    static_configs:
+      - targets: ["10.0.0.1:9090"]
+        labels: {engine: rtx6000a-8001, host: rtx6000a}
+      - targets: ["10.0.0.1:9091"]
+        labels: {engine: rtx6000a-8002, host: rtx6000a}
+      - targets: ["10.0.0.2:9090"]
+        labels: {engine: rtx4090b-8001, host: rtx4090b}
+
+  # Engine metrics, proxied verbatim by the gateway on /metrics. Scraping them
+  # through the gateway rather than from the engine directly means one address
+  # per engine and one label set that already matches the gateway's.
+  - job_name: engine
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["10.0.0.1:9090"]
+        labels: {engine: rtx6000a-8001, host: rtx6000a}
+      - targets: ["10.0.0.1:9091"]
+        labels: {engine: rtx6000a-8002, host: rtx6000a}
+      - targets: ["10.0.0.2:9090"]
+        labels: {engine: rtx4090b-8001, host: rtx4090b}
+
+  # Host metrics: node-exporter runs with network_mode host on each machine.
+  - job_name: node
+    static_configs:
+      - targets: ["10.0.0.1:9100"]
+        labels: {host: rtx6000a}
+      - targets: ["10.0.0.2:9100"]
+        labels: {host: rtx4090b}
+
+  # GPU metrics: dcgm-exporter, published on LLM_DCGM_EXPORTER_PORT.
+  - job_name: gpu
+    static_configs:
+      - targets: ["10.0.0.1:9400"]
+        labels: {host: rtx6000a}
+      - targets: ["10.0.0.2:9400"]
+        labels: {host: rtx4090b}

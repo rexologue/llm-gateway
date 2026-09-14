@@ -109,6 +109,7 @@ def create_app_state(settings: Settings) -> AppState:
         flush_interval_sec=settings.loki_flush_interval_sec,
         queue_max_size=settings.loki_queue_max_size,
         loki_app_name=settings.loki_app_name,
+        engine_id=settings.engine_id,
         metrics=metrics,
     )
     loki = GatewayLokiLogger(loki_publisher)
@@ -118,6 +119,9 @@ def create_app_state(settings: Settings) -> AppState:
         ttl_sec=settings.session_ttl_sec,
         max_connections=settings.session_tracker_max_connections,
         metrics=metrics,
+        enabled=settings.sessions_enabled,
+        breaker_failures=settings.valkey_breaker_failures,
+        breaker_cooldown_sec=settings.valkey_breaker_cooldown_sec,
     )
     session_store = SessionStore(
         api_url=settings.session_store_valkey_url,
@@ -126,6 +130,9 @@ def create_app_state(settings: Settings) -> AppState:
         max_connections=settings.session_store_max_connections,
         max_record_bytes=settings.session_store_max_record_bytes,
         write_attempts=settings.session_store_write_attempts,
+        enabled=settings.sessions_enabled,
+        breaker_failures=settings.valkey_breaker_failures,
+        breaker_cooldown_sec=settings.valkey_breaker_cooldown_sec,
     )
     return AppState(
         settings=settings,

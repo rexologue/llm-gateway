@@ -118,6 +118,12 @@ INFLIGHT_REQUESTS_GAUGE = Gauge(
     "Chat completion requests currently in flight (post-validation, pre-completion)",
 )
 
+DEPENDENCY_UP_GAUGE = Gauge(
+    "gateway_dependency_up",
+    "Whether an optional gateway dependency is currently being reached",
+    ["dependency"],
+)
+
 
 @dataclass(frozen=True, slots=True)
 class MetricsRequestContext:
@@ -295,6 +301,17 @@ class GatewayMetrics:
         """Set the active runtime session gauge."""
 
         ACTIVE_SESSION_GAUGE.set(count)
+
+
+    def set_dependency_up(self, dependency: str, up: bool) -> None:
+        """Publish whether one optional dependency is currently reachable.
+
+        A gateway degrades silently when the observability stack is down - that
+        is the point - so without this gauge nothing distinguishes "no sessions
+        were recorded" from "no sessions happened".
+        """
+
+        DEPENDENCY_UP_GAUGE.labels(dependency=dependency).set(1 if up else 0)
 
 
     def session_tracker_error(self, operation: str, error: BaseException) -> None:

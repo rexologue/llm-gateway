@@ -73,22 +73,45 @@ Grafana намеренно не входит в стек развёртыван�
 `backend-vllm-prometheus-overview.json`
 
 - Дашборд по бэкенду vLLM, DCGM и node-exporter.
-- Предназначен для Prometheus-стека на стороне LLM в `deploy/llm`.
 - Содержит панель загрузки хоста в расчёте на один vCPU.
 
 `backend-sglang-prometheus-overview.json`
 
 - Дашборд по бэкенду SGLang, DCGM и node-exporter.
-- Предназначен для Prometheus-стека на стороне LLM в `deploy/llm`.
+
+Оба дашборда по бэкендам режутся переменными `instance`. Метки `engine` и
+`host` из центрального Prometheus на этих сериях тоже есть, так что при желании
+их можно перевести на те же переменные, что и дашборды шлюза.
+
+## Переменная engine
+
+Три дашборда шлюза — `gateway-prometheus-overview`, `gateway-loki-events` и
+`gateway-tempo-traces` — содержат переменную `engine`. Значение у неё одно и то
+же (`GATEWAY_ENGINE_ID`), но подставляется она в три разных синтаксиса, потому
+что метка попадает в каждое хранилище своим путём:
+
+| Хранилище | Откуда метка | Синтаксис фильтра |
+| --- | --- | --- |
+| Prometheus | из `configs/prometheus.yaml` рядом с адресом цели | `gateway_requests_total{engine=~"$engine"}` |
+| Loki | шлюз push-ит её как метку потока | `{app="llm-gateway", engine=~"$engine"}` |
+| Tempo | шлюз кладёт её в `service.instance.id` | `{ resource.service.instance.id =~ "$engine" }` |
+
+В Prometheus и Loki это query-переменная со списком значений, в Tempo —
+текстовое поле с регулярным выражением (`.*` — все движки), потому что TraceQL
+не умеет перечислять значения ресурсных атрибутов.
+
+`gateway-session-viewer.json` переменной `engine` не имеет намеренно: Valkey у
+всех шлюзов общий, поэтому список сессий и любой отдельный диалог — общие для
+всего парка, независимо от того, какой шлюз их отдаёт.
 
 ## UID датасорсов
 
 Дашборды шаблонизированы. При импорте выберите соответствующие переменные
 датасорсов:
 
-- `DS_PROMETHEUS` — для Prometheus шлюза или LLM;
-- `DS_LOKI` — для Loki шлюза;
-- `DS_TEMPO` — для Tempo шлюза;
+- `DS_PROMETHEUS` — центральный Prometheus из `deploy/observability`;
+- `DS_LOKI` — центральный Loki;
+- `DS_TEMPO` — центральный Tempo;
 - `DS_INFINITY` — для просмотрщика сессий (`yesoreyeram-infinity-datasource`).
 
 Просмотрщику сессий нужен датасорс Infinity, который должен быть создан и
@@ -96,8 +119,37 @@ Grafana намеренно не входит в стек развёртыван�
 [Настройка просмотрщика сессий (Infinity)](#настройка-просмотрщика-сессий-infinity)
 ниже.
 
-Дашборды по бэкендам предполагают, что Prometheus на стороне LLM собирает
-метрики выбранного бэкенда вместе с Node exporter и DCGM exporter.
+Все дашборды смотрят в один и тот же центральный стек: отдельных датасорсов на
+каждую машину не нужно, разрез по движкам делает переменная `engine`.
+
+## Переход из лога в трассу
+
+Каждое событие Loki несёт поля `trace_id` и `span_id` — шлюз кладёт их туда из
+активного спана. Один раз настроив derived field, вы получаете из любой строки
+лога кнопку «открыть трассу».
+
+Настройка делается на **датасорсе Loki**, а не в дашборде:
+
+1. Connections → Data sources → ваш Loki → вкладка **Derived fields**.
+2. **Add field** и заполните:
+   - **Name**: `TraceID` — подпись кнопки под строкой лога;
+   - **Type**: `Label`;
+   - **Label**: `trace_id` — события шлюза приходят в JSON, и Grafana достаёт
+     поле по имени после парсинга; если у вас в запросе нет `| json`, выберите
+     вместо этого **Type: Regex in log line** с выражением `"trace_id":\s*"(\w+)"`;
+   - **Internal link**: включить, датасорс — ваш Tempo;
+   - **Query**: `${__value.raw}` — Tempo ожидает голый trace id.
+3. **Save & test**.
+
+Проверка: откройте `gateway-loki-events`, разверните любую строку в панели
+`Generation Responses` — под полями появится кнопка `TraceID`. Если её нет,
+почти всегда причина одна из двух: `GATEWAY_OTEL_ENABLED=false` (тогда
+`trace_id` в событиях пустой) или в запросе панели нет `| json`, а тип поля
+выбран `Label`.
+
+Обратный переход — из трассы в логи — настраивается на датасорсе Tempo
+(**Trace to logs**) с датасорсом Loki и тегом `engine`; запрос вида
+`{app="llm-gateway", engine="${__span.resourceAttributes['service.instance.id']}"} | json | trace_id="${__trace.traceId}"`.
 
 ## Настройка просмотрщика сессий (Infinity)
 

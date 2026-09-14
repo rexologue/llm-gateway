@@ -25,6 +25,7 @@ class LokiEventPublisher:
         flush_interval_sec: float,
         queue_max_size: int,
         loki_app_name: str,
+        engine_id: str,
         metrics: GatewayMetrics,
     ) -> None:
         """Initialize a background Loki event publisher."""
@@ -36,6 +37,7 @@ class LokiEventPublisher:
         self.flush_interval_sec = flush_interval_sec
         self.queue_max_size = max(0, queue_max_size)
         self.loki_app_name = loki_app_name
+        self.engine_id = engine_id
         self.queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(
             maxsize=self.queue_max_size
         )
@@ -123,8 +125,14 @@ class LokiEventPublisher:
 
         grouped: dict[tuple[tuple[str, str], ...], list[list[str]]] = defaultdict(list)
         for event in events:
+            # One central Loki receives every gateway, so the stream has to say
+            # which engine it came from. Only ``engine`` is added: it has one
+            # value per gateway process, while the identifiers a reader actually
+            # searches by - session and request ids - stay inside the event
+            # body, where their cardinality costs nothing.
             stream_labels = {
                 "app": self.loki_app_name,
+                "engine": self.engine_id,
                 "bucket": str(event.get("bucket", "unknown")),
                 "route": str(event.get("route", "unknown")),
             }

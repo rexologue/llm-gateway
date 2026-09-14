@@ -28,12 +28,30 @@ Prometheus для метрик шлюза.
 ## Структура
 
 ```text
-gateway/          код FastAPI-шлюза
-deploy/llm        compose-файлы LLM-движка, скрипты запуска, метрики бэкенда
-deploy/gateway    compose-файл шлюза, Loki, Valkey, Prometheus, Tempo, OTEL
-observability/    JSON-экспорты дашбордов для импорта в существующий Grafana/workspace
-docs/             справочник по развёртыванию, метрикам и трассировке
+gateway/               код FastAPI-шлюза
+deploy/llm             compose-файлы LLM-движка, скрипты запуска, экспортеры узла и GPU
+deploy/gateway         compose-файл шлюза — и только его
+deploy/observability   compose-файл центрального стека: Valkey, Loki, Tempo, OTEL, Prometheus
+observability/         JSON-экспорты дашбордов для импорта в существующий Grafana/workspace
+docs/                  справочник по развёртыванию, метрикам и трассировке
 ```
+
+Развёртывание разделено на три стека, потому что у них разная кратность:
+`deploy/llm` и `deploy/gateway` поднимаются на **каждой** машине с движком (по
+одному шлюзу на процесс движка), а `deploy/observability` — **один раз** на
+весь парк.
+
+За этим стоит конкретная задача. Когда перед шлюзами стоит балансер, ходы одной
+сессии уходят на разные машины. Общий Valkey делает так, что все шлюзы
+дописывают один и тот же транскрипт, и диалог остаётся целым; общие Loki и
+Tempo собирают события и трассы всех движков в одном месте, разделяя их меткой
+`engine` (`GATEWAY_ENGINE_ID`).
+
+Стек шлюза при этом от стека наблюдаемости не зависит: шлюз стартует и
+проксирует, даже когда центральная машина недоступна. Доставка в Loki и Tempo —
+push, её отказ только считается в метриках; вызовы Valkey закрывает
+предохранитель, поэтому лежащий Valkey не добавляет к запросам таймаутов.
+Подробности — в [Развёртывании](docs/DEPLOY.md).
 
 Подробные справочники:
 
@@ -47,14 +65,31 @@ docs/             справочник по развёртыванию, метр
 Сначала создайте настройки развёртывания:
 
 ```bash
+cp deploy/observability/.env.example deploy/observability/.env
+# отредактируйте deploy/observability/.env: OBSERVABILITY_HOST должен быть
+# адресом, доступным машинам с движками
+
 cp deploy/llm/.env.example deploy/llm/.env
 # отредактируйте deploy/llm/.env
 
 cp deploy/gateway/.env.example deploy/gateway/.env
-# отредактируйте deploy/gateway/.env
+# отредактируйте deploy/gateway/.env: обязательно GATEWAY_ENGINE_ID и адреса
+# центральной машины
 ```
 
-Сначала запустите один из вариантов бэкенда и проверьте его напрямую.
+Поднимите центральный стек — один раз, на выбранной машине:
+
+```bash
+cd deploy/observability
+docker compose --env-file .env -f docker-compose.yaml up -d
+```
+
+Затем перечислите шлюзы и их имена в
+`deploy/observability/configs/prometheus.yaml`: Loki и Tempo получают метку
+`engine` вместе с данными, а Prometheus работает по pull и должен знать адреса.
+
+Дальше — на каждой машине с движком. Сначала запустите один из вариантов
+бэкенда и проверьте его напрямую.
 
 vLLM:
 
@@ -102,16 +137,24 @@ Smoke-тесты разделены на два набора:
 `tool_calls`. Оставьте значение `false`, когда инструменты не входят в
 ожидаемый рантайм-контракт. Подробности — в [Развёртывании](docs/DEPLOY.md).
 
-Порты по умолчанию:
+Порты по умолчанию.
+
+На машине с движком:
 
 - LLM API: `http://127.0.0.1:9900`
-- Prometheus LLM: `http://0.0.0.0:9191`
 - шлюз: `http://0.0.0.0:9090`
 - эндпоинт метрик шлюза: `http://0.0.0.0:9090/gateway/metrics`
 - прокси метрик бэкенда: `http://0.0.0.0:9090/metrics`
-- Prometheus шлюза: `http://0.0.0.0:9091`
-- Loki: `http://0.0.0.0:9092`
+- node-exporter: `http://127.0.0.1:9100`
+- dcgm-exporter: `http://127.0.0.1:9400`
+
+На центральной машине:
+
+- Prometheus: `http://0.0.0.0:9091`
+- Loki: `http://0.0.0.0:3100`
 - Tempo: `http://0.0.0.0:3200`
+- OTLP/gRPC: `0.0.0.0:4317`
+- Valkey: `0.0.0.0:6379`
 
 ## Контракт бэкенда
 
@@ -139,12 +182,16 @@ Smoke-тесты разделены на два набора:
 | `GATEWAY_FORCED_MAX_COMPLETION_TOKENS` | Опциональное принудительное `max_completion_tokens` для чат-запросов | не задано |
 | `GATEWAY_FORCED_THINKING_DISABLED` | Принудительно выставлять `chat_template_kwargs.enable_thinking=false` в JSON-теле запроса | `false` |
 | `GATEWAY_ENABLE_SAMPLING_FALLBACK_OVERRIDE` | Заменять некорректные параметры сэмплирования в чат-запросах безопасными резервными значениями | `false` |
-| `GATEWAY_LOKI_APP_NAME` | Метка `app` в Loki | `llm-gateway` |
+| `GATEWAY_ENGINE_ID` | **Обязательная.** Имя движка: метка `engine` в Loki и `service.instance.id` в трассах. Без неё шлюз не стартует | не задано |
+| `GATEWAY_LOKI_APP_NAME` | Метка `app` в Loki; одинакова на всех шлюзах, разделяет их `engine` | `llm-gateway` |
 | `GATEWAY_LOKI_ENABLED` | Включить доставку событий в Loki | `true` |
 | `GATEWAY_LOKI_PUSH_URL` | URL Loki Push API | `http://llm-gateway-loki:3100/loki/api/v1/push` |
 | `GATEWAY_OTEL_ENABLED` | Включить трассировку OpenTelemetry | `false` |
-| `GATEWAY_VALKEY_URL` | Базовый URL Valkey/Redis; рантайм использует DB 0, сохранённые чаты — DB 1 | `redis://llm-gateway-valkey:6379` |
-| `GATEWAY_SESSION_TTL` | Скользящий TTL сессии в секундах | `21600` |
+| `GATEWAY_SESSIONS_ENABLED` | Вести сессии в Valkey. `false` превращает шлюз в чистый прокси: ни одного вызова к Valkey, `/gateway/session*` отвечают `503` | `true` |
+| `GATEWAY_VALKEY_URL` | Базовый URL **общего** Valkey из `deploy/observability`; рантайм использует DB 0, сохранённые чаты — DB 1 | `redis://llm-gateway-valkey:6379` |
+| `GATEWAY_VALKEY_BREAKER_FAILURES` | Сколько подряд неудач открывают предохранитель и прекращают сетевые вызовы к Valkey | `3` |
+| `GATEWAY_VALKEY_BREAKER_COOLDOWN_SEC` | Сколько секунд предохранитель держится открытым, прежде чем пропустить пробный вызов | `30` |
+| `GATEWAY_SESSION_TTL` | Скользящий TTL рантайм-ключа сессии в секундах | `180` |
 | `GATEWAY_SESSION_STORE_TTL` | TTL сохранённой чат-сессии в секундах | `1296000` |
 | `GATEWAY_SESSION_STORE_MAX_RECORD_BYTES` | Порог размера записи сессии; при превышении вытесняется аудит, но не диалог | `4194304` |
 | `GATEWAY_SESSION_STORE_WRITE_ATTEMPTS` | Число попыток атомарной записи транскрипта при конкуренции | `5` |
@@ -261,5 +308,7 @@ usage-событие не отдаётся: исходящий поток пер
 - `valkey.operation` — операции Valkey на уровне сессий;
 - `llm.stream_response` — итерирование потокового ответа.
 
-Compose-стек шлюза включает Tempo и OTEL Collector. Атрибуты спанов, семантика
-ошибок и советы по поиску — в [Трассах](docs/TRACES.md).
+Tempo и OTEL Collector живут в `deploy/observability`. Трассы всех шлюзов
+попадают в один Tempo и разделяются ресурсным атрибутом `service.instance.id`,
+который шлюз берёт из `GATEWAY_ENGINE_ID`. Атрибуты спанов, семантика ошибок и
+советы по поиску — в [Трассах](docs/TRACES.md).

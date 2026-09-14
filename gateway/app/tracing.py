@@ -39,10 +39,14 @@ def configure_tracing(app: FastAPI, settings: Settings) -> None:
     if not settings.otel_enabled:
         return
 
+    # ``service.name`` stays identical on every gateway and the engine identity
+    # goes to ``service.instance.id``: one service with N instances, rather than
+    # N services that Tempo's service view would have no way to relate.
     resource = Resource.create(
         {
             "service.name": settings.otel_service_name,
             "service.namespace": "llm-serving",
+            "service.instance.id": settings.engine_id,
         }
     )
 

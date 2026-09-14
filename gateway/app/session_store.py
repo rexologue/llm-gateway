@@ -24,7 +24,7 @@ from opentelemetry import trace
 from redis.exceptions import RedisError
 
 from app.backend import ChatTurn
-from app.tools.valkey_store import ValkeyJsonStore
+from app.tools.valkey_store import ValkeyJsonStore, ValkeyUnavailable
 from app.tracing import (
     SPAN_VALKEY_OPERATION,
     TRACER_NAME,
@@ -99,7 +99,13 @@ class SessionWriteResult:
 
 
 class SessionStore:
-    """Store the full chat transcript observed for each external session id."""
+    """Store the full chat transcript observed for each external session id.
+
+    The Valkey behind it lives in the central observability stack, which a
+    gateway may run without. Persistence is therefore optional by construction:
+    when it is off or unreachable, every write reports ``saved=False`` and the
+    proxying itself is untouched.
+    """
 
     def __init__(
         self,
@@ -110,9 +116,13 @@ class SessionStore:
         max_connections: int,
         max_record_bytes: int = 0,
         write_attempts: int = 5,
+        enabled: bool = True,
+        breaker_failures: int = 3,
+        breaker_cooldown_sec: float = 30.0,
     ) -> None:
         """Initialize the Valkey-backed persisted session store."""
 
+        self.enabled = enabled
         self.max_record_bytes = max(0, max_record_bytes)
         self.write_attempts = max(1, write_attempts)
         self.store = ValkeyJsonStore(
@@ -120,7 +130,27 @@ class SessionStore:
             prefix=prefix,
             default_ttl_sec=ttl_sec,
             max_connections=max_connections,
+            breaker_failures=breaker_failures,
+            breaker_cooldown_sec=breaker_cooldown_sec,
         )
+
+
+    @property
+    def available(self) -> bool:
+        """Return whether transcript persistence is currently reaching Valkey."""
+
+        return self.enabled and self.store.available
+
+
+    def _require_enabled(self) -> None:
+        """Fail a read the same way an outage would, when persistence is off.
+
+        The viewer routes already answer ``503`` on ``RedisError``, so a gateway
+        deployed without the session store needs no separate branch there.
+        """
+
+        if not self.enabled:
+            raise ValkeyUnavailable("session store disabled by GATEWAY_SESSIONS_ENABLED")
 
 
     async def close(self) -> None:
@@ -144,7 +174,7 @@ class SessionStore:
         turn - the loser of the race replays its append on the winner's record.
         """
 
-        if not isinstance(exchange.messages, list):
+        if not self.enabled or not isinstance(exchange.messages, list):
             return SessionWriteResult(saved=False)
 
         outcome = SessionWriteResult(saved=False)
@@ -184,7 +214,13 @@ class SessionStore:
             return outcome
 
         except RedisError as exc:
-            logger.warning("Session store record_exchange failed: %s", exc)
+            # An already-open breaker is expected, not news: the outage it
+            # stands for was logged when it was first detected.
+            if isinstance(exc, ValkeyUnavailable):
+                logger.debug("Session store record_exchange skipped: %s", exc)
+            else:
+                logger.warning("Session store record_exchange failed: %s", exc)
+
             add_current_span_error_event(
                 "session_store.error",
                 exc,
@@ -204,6 +240,8 @@ class SessionStore:
         (lifetime since the first request, from ``created_at``), and ``idle_sec``
         (time since the last request, from ``updated_at``).
         """
+
+        self._require_enabled()
 
         with tracer.start_as_current_span(
             SPAN_VALKEY_OPERATION,
@@ -233,6 +271,8 @@ class SessionStore:
         tool and turn counts, so a viewer can list sessions and their lifetimes
         without fetching every full record.
         """
+
+        self._require_enabled()
 
         summaries: list[dict[str, Any]] = []
         now = datetime.now(UTC)

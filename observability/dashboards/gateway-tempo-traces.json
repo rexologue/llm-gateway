@@ -112,7 +112,7 @@
             "uid": "${DS_TEMPO}"
           },
           "queryType": "traceql",
-          "query": "{ resource.service.name =~ \"$service\" && span.http.route =~ \"$route\" && span.llm.model =~ \"$model\" && span.session.id =~ \"$session_id\" && span.request.id =~ \"$request_id\" }",
+          "query": "{ resource.service.name =~ \"$service\" && resource.service.instance.id =~ \"$engine\" && span.http.route =~ \"$route\" && span.llm.model =~ \"$model\" && span.session.id =~ \"$session_id\" && span.request.id =~ \"$request_id\" }",
           "limit": 100,
           "tableType": "traces"
         }
@@ -174,7 +174,7 @@
             "uid": "${DS_TEMPO}"
           },
           "queryType": "traceql",
-          "query": "{ resource.service.name =~ \"$service\" && span.http.route =~ \"$route\" && span.llm.model =~ \"$model\" && span.session.first_request = true && span.session.id =~ \"$session_id\" }",
+          "query": "{ resource.service.name =~ \"$service\" && resource.service.instance.id =~ \"$engine\" && span.http.route =~ \"$route\" && span.llm.model =~ \"$model\" && span.session.first_request = true && span.session.id =~ \"$session_id\" }",
           "limit": 100,
           "tableType": "traces"
         }
@@ -236,7 +236,7 @@
             "uid": "${DS_TEMPO}"
           },
           "queryType": "traceql",
-          "query": "{ resource.service.name =~ \"$service\" && span.http.route =~ \"$route\" && span.llm.model =~ \"$model\" && span.llm.duration_sec > ${min_duration_sec} }",
+          "query": "{ resource.service.name =~ \"$service\" && resource.service.instance.id =~ \"$engine\" && span.http.route =~ \"$route\" && span.llm.model =~ \"$model\" && span.llm.duration_sec > ${min_duration_sec} }",
           "limit": 100,
           "tableType": "traces"
         }
@@ -298,7 +298,7 @@
             "uid": "${DS_TEMPO}"
           },
           "queryType": "traceql",
-          "query": "{ resource.service.name =~ \"$service\" && name = \"llm.stream_response\" && span.llm.ttft_sec > ${min_ttft_sec} }",
+          "query": "{ resource.service.name =~ \"$service\" && resource.service.instance.id =~ \"$engine\" && name = \"llm.stream_response\" && span.llm.ttft_sec > ${min_ttft_sec} }",
           "limit": 100,
           "tableType": "traces"
         }
@@ -360,7 +360,7 @@
             "uid": "${DS_TEMPO}"
           },
           "queryType": "traceql",
-          "query": "{ resource.service.name =~ \"$service\" && name = \"llm.backend.request\" && span.http.route =~ \"$route\" && span.llm.model =~ \"$model\" }",
+          "query": "{ resource.service.name =~ \"$service\" && resource.service.instance.id =~ \"$engine\" && name = \"llm.backend.request\" && span.http.route =~ \"$route\" && span.llm.model =~ \"$model\" }",
           "limit": 100,
           "tableType": "traces"
         }
@@ -422,7 +422,7 @@
             "uid": "${DS_TEMPO}"
           },
           "queryType": "traceql",
-          "query": "{ resource.service.name =~ \"$service\" && status = error }",
+          "query": "{ resource.service.name =~ \"$service\" && resource.service.instance.id =~ \"$engine\" && status = error }",
           "limit": 100,
           "tableType": "traces"
         }
@@ -484,7 +484,7 @@
             "uid": "${DS_TEMPO}"
           },
           "queryType": "traceql",
-          "query": "{ resource.service.name =~ \"$service\" && span.http.status_code >= 400 }",
+          "query": "{ resource.service.name =~ \"$service\" && resource.service.instance.id =~ \"$engine\" && span.http.status_code >= 400 }",
           "limit": 100,
           "tableType": "traces"
         }
@@ -546,7 +546,7 @@
             "uid": "${DS_TEMPO}"
           },
           "queryType": "traceql",
-          "query": "{ resource.service.name =~ \"$service\" && span.llm.cancelled = true }",
+          "query": "{ resource.service.name =~ \"$service\" && resource.service.instance.id =~ \"$engine\" && span.llm.cancelled = true }",
           "limit": 100,
           "tableType": "traces"
         }
@@ -607,6 +607,18 @@
           "text": "llm-gateway",
           "value": "llm-gateway"
         }
+      },
+      {
+        "current": {
+          "text": ".*",
+          "value": ".*"
+        },
+        "description": "Движок (GATEWAY_ENGINE_ID): один процесс шлюза перед одним процессом движка. Регулярное выражение; .* — все движки.",
+        "label": "Движок",
+        "name": "engine",
+        "options": [],
+        "query": ".*",
+        "type": "textbox"
       },
       {
         "name": "route",

@@ -51,29 +51,6 @@ services:
       - llm
 
 
-  llm-prometheus:
-    image: ${LLM_PROMETHEUS_IMAGE}
-    container_name: ${LLM_PROMETHEUS_CONTAINER_NAME}
-    restart: unless-stopped
-
-    ports:
-      - "${LLM_PROMETHEUS_HOST}:${LLM_PROMETHEUS_HTTP_PORT}:9090"
-
-    command:
-      - "--config.file=/etc/prometheus/prometheus.yml"
-      - "--storage.tsdb.path=/prometheus"
-
-    volumes:
-      - ./configs/prometheus-vllm.yaml:/etc/prometheus/prometheus.yml:ro
-      - llm-prometheus-data:/prometheus
-
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-
-    networks:
-      - llm
-
-
   llm-node-exporter:
     image: ${LLM_NODE_EXPORTER_IMAGE}
     container_name: ${LLM_NODE_EXPORTER_CONTAINER_NAME}
@@ -96,12 +73,13 @@ services:
     restart: unless-stopped
     runtime: nvidia
 
+    # Published on the host because the Prometheus that scrapes it now lives in
+    # the central observability stack, on another machine.
+    ports:
+      - "${LLM_HOST}:${LLM_DCGM_EXPORTER_PORT}:9400"
+
     networks:
       - llm
-
-
-volumes:
-  llm-prometheus-data:
 
 
 networks:
