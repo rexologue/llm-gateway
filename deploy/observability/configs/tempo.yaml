@@ -1,3 +1,11 @@
+# Monolithic Tempo (-target=all): one process, local disk, no Kafka.
+#
+# Written for Tempo 3.x. The 3.0 release removed the ingester and the compactor
+# outright, so a 2.x config - which named both as top-level blocks - makes the
+# binary refuse to start with "field ingester not found in type app.Config".
+# The write path is now the live-store, and compaction and retention belong to
+# the backend scheduler.
+
 auth_enabled: false
 stream_over_http_enabled: true
 
@@ -13,14 +21,20 @@ distributor:
         grpc:
           endpoint: 0.0.0.0:4317
 
-ingester:
-  trace_idle_period: 10s
-  max_block_bytes: 1048576
+live_store:
+  # Serves recent-trace queries and flushes completed blocks to storage - the
+  # role the ingester used to play. Small blocks suit a single-node stack with
+  # modest trace volume; the shipped defaults (30s / 50MiB) target larger ones.
+  # There is no replacement for the old `trace_idle_period`.
   max_block_duration: 5m
+  max_block_bytes: 1048576
 
-compactor:
-  compaction:
-    block_retention: 24h
+backend_scheduler:
+  # Retention lived under `compactor.compaction` before 3.0.
+  provider:
+    compaction:
+      compaction:
+        block_retention: 24h
 
 storage:
   trace:
