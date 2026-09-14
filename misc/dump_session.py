@@ -58,14 +58,19 @@ def fetch_session(
 
 
 def render_transcript(record: dict[str, Any]) -> str:
-    """Render the stored messages as a plain-text dialog for quick reading."""
+    """Render the stored session as a readable dialog with its turn audit.
 
-    metadata = record.get("metadata")
-    metadata = metadata if isinstance(metadata, dict) else {}
-    messages = record.get("messages")
-    messages = messages if isinstance(messages, list) else []
-    tools = record.get("tools")
-    tools = tools if isinstance(tools, list) else []
+    Tool calls and their results are shown where they happened, and each turn's
+    accounting - model, finish reason, usage, how it was delivered - is listed
+    after the dialog rather than inlined, so the conversation stays readable.
+    """
+
+    metadata = _as_dict(record.get("metadata"))
+    messages = _as_list(record.get("messages"))
+    tools = _as_list(record.get("tools"))
+    turns = _as_list(record.get("turns"))
+    revisions = _as_list(record.get("revisions"))
+    totals = _as_dict(metadata.get("totals"))
 
     lines = [
         f"session_id:      {metadata.get('session_id')}",
@@ -75,37 +80,185 @@ def render_transcript(record: dict[str, Any]) -> str:
         f"idle_sec:        {metadata.get('idle_sec')}",
         f"expires_in_sec:  {metadata.get('expires_in_sec')}",
         f"messages:        {len(messages)}",
+        f"turns:           {len(turns)}",
         f"tools:           {len(tools)}",
     ]
 
+    if totals:
+        lines.append(
+            "totals:          "
+            f"requests={totals.get('requests')} "
+            f"failed={totals.get('failed_requests') or 0} "
+            f"prompt_tokens={totals.get('prompt_tokens') or 0} "
+            f"completion_tokens={totals.get('completion_tokens') or 0}"
+        )
+
+    if revisions:
+        lines.append(f"revisions:       {len(revisions)} (superseded history is archived)")
+
     if tools:
         lines.append("")
-        lines.append("--- tools ---")
-        lines.append(json.dumps(tools, ensure_ascii=False, indent=2))
+        lines.append("--- declared tools ---")
+        for tool in tools:
+            lines.append(f"  {_tool_signature(tool)}")
 
     lines.append("")
-    lines.append("--- messages ---")
+    lines.append("--- dialog ---")
+    assistant_turns = {
+        turn.get("assistant_index"): position
+        for position, turn in enumerate(turns, start=1)
+        if isinstance(turn, dict) and turn.get("assistant_index") is not None
+    }
 
-    for idx, message in enumerate(messages):
-        if not isinstance(message, dict):
-            lines.append(f"\n[{idx}] {message!r}")
-            continue
+    for index, message in enumerate(messages):
+        lines.extend(_render_message(index, message, assistant_turns.get(index)))
 
-        lines.append(f"\n[{idx}] {message.get('role', '?')}:")
-        content = message.get("content")
+    if turns:
+        lines.append("")
+        lines.append("--- turns ---")
+        for position, turn in enumerate(turns, start=1):
+            lines.append(_render_turn(position, _as_dict(turn)))
 
-        if content is not None:
+    if revisions:
+        lines.append("")
+        lines.append("--- archived revisions ---")
+        for revision in revisions:
+            entry = _as_dict(revision)
+            dropped = _as_list(entry.get("dropped"))
             lines.append(
-                content
-                if isinstance(content, str)
-                else json.dumps(content, ensure_ascii=False, indent=2)
+                f"  {entry.get('at')} {entry.get('reason')}: "
+                f"{len(dropped)} message(s) superseded"
             )
-
-        for extra in ("reasoning_content", "name", "tool_call_id", "tool_calls"):
-            if message.get(extra) is not None:
-                lines.append(f"  {extra}: {json.dumps(message[extra], ensure_ascii=False)}")
+            for message in dropped:
+                lines.append(f"    {_as_dict(message).get('role')}: {_one_line(message)}")
 
     return "\n".join(lines)
+
+
+def _render_message(index: int, message: Any, turn_no: int | None) -> list[str]:
+    """Render one dialog message, keeping tool calls in their own position."""
+
+    if not isinstance(message, dict):
+        return [f"\n[{index}] {message!r}"]
+
+    role = message.get("role", "?")
+    marker = f"  (turn {turn_no})" if turn_no is not None else ""
+    tool_call_id = message.get("tool_call_id")
+    header = f"\n[{index}] {role}"
+
+    if tool_call_id:
+        header += f" -> {tool_call_id}"
+
+    if message.get("name"):
+        header += f" ({message['name']})"
+
+    lines = [header + ":" + marker]
+    content = message.get("content")
+
+    if content is not None:
+        lines.append(
+            content
+            if isinstance(content, str)
+            else json.dumps(content, ensure_ascii=False, indent=2)
+        )
+
+    reasoning = message.get("reasoning_content")
+    if reasoning:
+        lines.append(f"  [reasoning] {reasoning}")
+
+    if message.get("refusal"):
+        lines.append(f"  [refusal] {message['refusal']}")
+
+    for call in _as_list(message.get("tool_calls")):
+        entry = _as_dict(call)
+        function = _as_dict(entry.get("function"))
+        lines.append(
+            f"  [tool_call {entry.get('id')}] "
+            f"{function.get('name')}({function.get('arguments')})"
+        )
+
+    return lines
+
+
+def _render_turn(position: int, turn: dict[str, Any]) -> str:
+    """Render one line of turn accounting."""
+
+    usage = _as_dict(turn.get("usage"))
+    parts = [
+        f"{position:>3}",
+        str(turn.get("request_id")),
+        "stream" if turn.get("stream") else "unary",
+        f"status={turn.get('status_code')}",
+        f"finish={turn.get('finish_reason')}",
+    ]
+
+    if usage:
+        parts.append(
+            f"usage={usage.get('prompt_tokens')}/{usage.get('completion_tokens')}"
+        )
+
+    for key, label in (("ttft_sec", "ttft"), ("e2e_sec", "e2e")):
+        value = turn.get(key)
+        if isinstance(value, (int, float)):
+            parts.append(f"{label}={value:.3f}")
+
+    parts.append(str(turn.get("delivery")))
+
+    if turn.get("truncated"):
+        parts.append("TRUNCATED")
+
+    error = _as_dict(turn.get("error"))
+    if error:
+        parts.append(f"error={error.get('type')}: {_shorten(str(error.get('message')))}")
+
+    if turn.get("extra_choices"):
+        parts.append(f"extra_choices={len(_as_list(turn.get('extra_choices')))}")
+
+    return "  ".join(parts)
+
+
+def _tool_signature(tool: Any) -> str:
+    """Return a compact signature for one declared tool."""
+
+    entry = _as_dict(tool)
+    function = _as_dict(entry.get("function"))
+    name = function.get("name") or entry.get("name") or "?"
+    description = function.get("description")
+
+    return f"{name}" + (f" - {_shorten(str(description))}" if description else "")
+
+
+def _one_line(value: Any) -> str:
+    """Return a one-line rendering of a message body."""
+
+    if isinstance(value, dict):
+        content = value.get("content")
+        if isinstance(content, str):
+            return _shorten(content)
+
+        return _shorten(json.dumps(content, ensure_ascii=False))
+
+    return _shorten(json.dumps(value, ensure_ascii=False))
+
+
+def _shorten(text: str, limit: int = 120) -> str:
+    """Return a single-line excerpt of at most ``limit`` characters."""
+
+    collapsed = " ".join(text.split())
+
+    return collapsed if len(collapsed) <= limit else collapsed[: limit - 1] + "\u2026"
+
+
+def _as_dict(value: Any) -> dict[str, Any]:
+    """Return the value when it is a dict, an empty dict otherwise."""
+
+    return value if isinstance(value, dict) else {}
+
+
+def _as_list(value: Any) -> list[Any]:
+    """Return the value when it is a list, an empty list otherwise."""
+
+    return value if isinstance(value, list) else []
 
 
 def dump_json(record: dict[str, Any], indent: int) -> str:

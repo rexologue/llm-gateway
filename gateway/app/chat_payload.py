@@ -1,4 +1,9 @@
-"""Gateway utility helpers shared by routes, metrics, and tracing."""
+"""Shaping and reading of OpenAI-compatible chat request payloads.
+
+Everything here is about the request body the gateway forwards: the overrides
+it applies before generation, and the bounded values telemetry reads back out
+of it. Response and header concerns live in ``http_utils``.
+"""
 
 from __future__ import annotations
 
@@ -8,8 +13,6 @@ from math import isfinite
 from typing import Any
 
 import orjson
-
-from app.http_utils import strip_hop_by_hop_headers
 
 MAX_MODEL_LABEL_LENGTH = 128
 INT64_MIN = -(2**63)
@@ -94,13 +97,25 @@ def encode_payload(payload: dict[str, Any]) -> tuple[bytes, str]:
     return raw_body, decoded_body
 
 
+@dataclass(frozen=True, slots=True)
+class ShapedChatRequest:
+    """A chat request after the gateway applied its configured overrides."""
+
+    payload: dict[str, Any]
+    raw_body: bytes
+    decoded_body: str
+    fallback_params: dict[str, Any] | None = None
+    usage_forced: bool = False
+
+
 def apply_chat_payload_overrides(
     payload: dict[str, Any],
     *,
     forced_max_completion_tokens: int | None,
     forced_thinking_disabled: bool,
     enable_sampling_fallback_override: bool,
-) -> tuple[dict[str, Any], bytes, str, dict[str, Any] | None]:
+    force_stream_usage: bool = False,
+) -> ShapedChatRequest:
     """Apply configured overrides before sending a chat request to the backend."""
 
     patched = dict(payload)
@@ -116,9 +131,38 @@ def apply_chat_payload_overrides(
     if enable_sampling_fallback_override:
         fallback_params = apply_sampling_fallback_overrides(patched)
 
+    usage_forced = force_stream_usage and request_stream_usage(patched)
     raw_body, decoded_body = encode_payload(patched)
 
-    return patched, raw_body, decoded_body, fallback_params
+    return ShapedChatRequest(
+        payload=patched,
+        raw_body=raw_body,
+        decoded_body=decoded_body,
+        fallback_params=fallback_params,
+        usage_forced=usage_forced,
+    )
+
+
+def request_stream_usage(payload: dict[str, Any]) -> bool:
+    """Ask the backend for stream usage and report whether the caller had not.
+
+    The transcript records the token usage of every turn, and in a stream the
+    backend only reports it when asked. The caller who never asked must not
+    suddenly receive that extra event, so the flag returned here tells the
+    relay to withhold it.
+    """
+
+    if not payload.get("stream"):
+        return False
+
+    stream_options = payload.get("stream_options")
+    stream_options = dict(stream_options) if isinstance(stream_options, dict) else {}
+    already_requested = stream_options.get("include_usage") is True
+
+    stream_options["include_usage"] = True
+    payload["stream_options"] = stream_options
+
+    return not already_requested
 
 
 def apply_generic_payload_overrides(
@@ -269,25 +313,3 @@ def max_completion_tokens(payload: Mapping[str, Any] | None) -> int | None:
         return value
 
     return None
-
-
-####################
-# RESPONSE HELPERS #
-####################
-
-
-def gateway_response_headers(
-    headers: Mapping[str, str],
-    *,
-    request_id: str,
-    session_id: str | None,
-) -> dict[str, str]:
-    """Build gateway response headers for a proxied or gateway-owned response."""
-
-    response_headers = strip_hop_by_hop_headers(headers)
-    response_headers["x-request-id"] = request_id
-
-    if session_id is not None:
-        response_headers["x-session-id"] = session_id
-
-    return response_headers

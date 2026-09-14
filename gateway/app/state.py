@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import asyncio
+import logging
+from dataclasses import dataclass, field
+from typing import Any, Coroutine
 
 import httpx
 
@@ -13,6 +16,57 @@ from app.session_store import SessionStore
 from app.session_tracker import SessionTracker
 from app.settings import Settings
 from app.tools.loki import LokiEventPublisher
+
+
+logger = logging.getLogger(__name__)
+
+
+class BackgroundTasks:
+    """Track detached tasks so shutdown can wait for them.
+
+    The gateway finishes reading a backend response even when the caller has
+    gone, which means work outliving its request. A bare ``create_task`` would
+    be garbage-collected mid-flight and would vanish silently on shutdown, so
+    every such task is held here until it completes.
+    """
+
+    def __init__(self) -> None:
+        """Initialize an empty task registry."""
+
+        self._tasks: set[asyncio.Task[Any]] = set()
+
+
+    def spawn(self, coro: Coroutine[Any, Any, Any], *, name: str) -> asyncio.Task[Any]:
+        """Start a tracked task that outlives the request that created it."""
+
+        task = asyncio.create_task(coro, name=name)
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+
+        return task
+
+
+    async def close(self, *, timeout: float) -> int:
+        """Wait for tracked tasks, cancel whatever is still running, return the count."""
+
+        pending = set(self._tasks)
+        if not pending:
+            return 0
+
+        done, still_running = await asyncio.wait(pending, timeout=max(0.0, timeout))
+
+        for task in still_running:
+            task.cancel()
+
+        if still_running:
+            await asyncio.gather(*still_running, return_exceptions=True)
+            logger.warning(
+                "Background tasks cancelled at shutdown: %d finished, %d cancelled",
+                len(done),
+                len(still_running),
+            )
+
+        return len(pending)
 
 
 @dataclass(slots=True)
@@ -26,6 +80,7 @@ class AppState:
     loki: GatewayLokiLogger
     session_tracker: SessionTracker
     session_store: SessionStore
+    tasks: BackgroundTasks = field(default_factory=BackgroundTasks)
 
 
 def create_app_state(settings: Settings) -> AppState:
@@ -69,6 +124,8 @@ def create_app_state(settings: Settings) -> AppState:
         prefix=settings.session_store_key_prefix,
         ttl_sec=settings.session_store_ttl_sec,
         max_connections=settings.session_store_max_connections,
+        max_record_bytes=settings.session_store_max_record_bytes,
+        write_attempts=settings.session_store_write_attempts,
     )
     return AppState(
         settings=settings,

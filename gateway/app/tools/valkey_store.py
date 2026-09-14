@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Any, AsyncIterator, TypeAlias
+from typing import Any, AsyncIterator, Callable, TypeAlias
 
 import orjson
 import redis.asyncio as redis
+from redis.exceptions import WatchError
 
 JsonValue: TypeAlias = dict[str, Any] | list[Any] | str | int | float | bool | None
 
@@ -91,6 +92,48 @@ class ValkeyJsonStore:
         else:
             effective_ttl = ttl_sec if ttl_sec is not None else self.default_ttl_sec
             await self.redis.set(key, payload, ex=effective_ttl)
+
+
+    async def update(
+        self,
+        record_id: str,
+        mutator: Callable[[JsonValue | None], JsonValue],
+        *,
+        ttl_sec: int | None = None,
+        max_attempts: int = 5,
+    ) -> bool:
+        """Apply a mutator to one JSON value atomically.
+
+        Read-modify-write over a plain GET/SET loses concurrent writes: two
+        writers both read the old value and the later SET overwrites the
+        earlier one. This runs the mutator inside WATCH/MULTI/EXEC, so a value
+        that changed underneath us aborts the transaction and the mutator is
+        replayed on the fresh value. The mutator must therefore be free of side
+        effects outside the value it returns.
+        """
+
+        key = self.key(record_id)
+        effective_ttl = ttl_sec if ttl_sec is not None else self.default_ttl_sec
+
+        for _attempt in range(max(1, max_attempts)):
+            async with self.redis.pipeline(transaction=True) as pipe:
+                await pipe.watch(key)
+
+                raw = await pipe.get(key)
+                current = orjson.loads(raw) if raw is not None else None
+                updated = mutator(current)
+
+                pipe.multi()
+                pipe.set(key, orjson.dumps(updated), ex=effective_ttl)
+
+                try:
+                    await pipe.execute()
+                    return True
+
+                except WatchError:
+                    continue
+
+        return False
 
 
     async def set_if_absent(

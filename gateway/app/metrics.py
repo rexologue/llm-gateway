@@ -34,6 +34,24 @@ RESPONSE_COUNTER = Counter(
     ["route", "method", "stream", "status_family", "result"],
 )
 
+SESSION_WRITE_COUNTER = Counter(
+    "gateway_session_writes_total",
+    "Transcript writes to the session store by outcome",
+    ["result", "delivery"],
+)
+
+SESSION_WRITE_WARN_COUNTER = Counter(
+    "gateway_session_write_warnings_total",
+    "Transcript writes that needed a corrective action, by reason",
+    ["warn_reason"],
+)
+
+BACKEND_DRAIN_COUNTER = Counter(
+    "gateway_backend_drains_total",
+    "Backend responses read to completion after the caller disconnected",
+    ["outcome"],
+)
+
 SESSION_REQUEST_COUNTER = Counter(
     "gateway_session_requests_total",
     "Total session-aware chat completion requests processed by the gateway",
@@ -286,6 +304,24 @@ class GatewayMetrics:
             operation=operation,
             error_type=type(error).__name__,
         ).inc()
+
+
+    def session_write(self, *, saved: bool, delivery: str, warn_reason: str | None) -> None:
+        """Record one transcript write and whatever it had to correct."""
+
+        SESSION_WRITE_COUNTER.labels(
+            result="saved" if saved else "failed",
+            delivery=delivery,
+        ).inc()
+
+        if warn_reason is not None:
+            SESSION_WRITE_WARN_COUNTER.labels(warn_reason=warn_reason).inc()
+
+
+    def backend_drain(self, outcome: str) -> None:
+        """Record one backend read that continued past the caller leaving."""
+
+        BACKEND_DRAIN_COUNTER.labels(outcome=outcome).inc()
 
 
     def loki_push(self, status: str) -> None:

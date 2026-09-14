@@ -66,6 +66,27 @@ class LokiRequestContext:
         await self.logger.log_error(self, error, e2e_sec=e2e_sec)
 
 
+    async def session_write(
+        self,
+        *,
+        warn_reason: str,
+        delivery: str,
+        message_cnt: int,
+        turn_cnt: int,
+        dropped_cnt: int,
+    ) -> None:
+        """Write a warning event about a transcript write that needed a decision."""
+
+        await self.logger.log_session_write(
+            self,
+            warn_reason=warn_reason,
+            delivery=delivery,
+            message_cnt=message_cnt,
+            turn_cnt=turn_cnt,
+            dropped_cnt=dropped_cnt,
+        )
+
+
 class GatewayLokiLogger:
     """Build gateway Loki events and submit them to the event publisher."""
 
@@ -221,6 +242,45 @@ class GatewayLokiLogger:
                 "error_type": type(error).__name__,
                 "error_message": str(error),
             }
+        )
+
+        await self._submit(event)
+
+
+    async def log_session_write(
+        self,
+        context: LokiRequestContext,
+        *,
+        warn_reason: str,
+        delivery: str,
+        message_cnt: int,
+        turn_cnt: int,
+        dropped_cnt: int,
+    ) -> None:
+        """Write a warning event for a transcript write worth an operator's attention.
+
+        Successful writes stay silent - they are the normal case and the metrics
+        already count them. This event exists for the ones that had to give
+        something up: a record trimmed to fit, a history the client rewrote, a
+        turn the gateway could not persist at all.
+        """
+
+        event = self._base_event(
+            bucket="gateway_session",
+            level="warn",
+            event_type="session_write",
+            context=context,
+        )
+        event.update(
+            self._compact(
+                {
+                    "warn_reason": warn_reason,
+                    "session_delivery": delivery,
+                    "session_message_cnt": message_cnt,
+                    "session_turn_cnt": turn_cnt,
+                    "session_dropped_cnt": dropped_cnt or None,
+                }
+            )
         )
 
         await self._submit(event)

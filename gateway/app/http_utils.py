@@ -95,3 +95,20 @@ def session_id_from_headers(headers: Mapping[str, str]) -> str | None:
             return value.strip()
 
     return None
+
+
+def gateway_response_headers(
+    headers: Mapping[str, str],
+    *,
+    request_id: str,
+    session_id: str | None,
+) -> dict[str, str]:
+    """Build gateway response headers for a proxied or gateway-owned response."""
+
+    response_headers = strip_hop_by_hop_headers(headers)
+    response_headers["x-request-id"] = request_id
+
+    if session_id is not None:
+        response_headers["x-session-id"] = session_id
+
+    return response_headers

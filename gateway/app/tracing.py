@@ -16,7 +16,7 @@ from opentelemetry.sdk.trace.sampling import ParentBased, TraceIdRatioBased
 from opentelemetry.trace import Span, Status, StatusCode
 
 from app.settings import Settings
-from app.utils import max_completion_tokens, message_count, model_label
+from app.chat_payload import max_completion_tokens, message_count, model_label
 
 
 SPAN_GATEWAY_REQUEST = "llm.gateway.request"

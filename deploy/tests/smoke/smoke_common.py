@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import uuid
 from typing import Any
 
@@ -75,12 +76,20 @@ def chat_payload(
     max_tokens: int = 16,
     tools: list[dict[str, Any]] | None = None,
     tool_choice: Any = None,
+    messages: list[dict[str, Any]] | None = None,
+    stream_options: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Return a minimal OpenAI-compatible chat completion payload."""
+    """Return a minimal OpenAI-compatible chat completion payload.
+
+    ``messages`` replaces the single-prompt history, which is what a client
+    continuing a dialog - or deliberately trimming one - actually sends.
+    """
 
     payload: dict[str, Any] = {
         "model": MODEL,
-        "messages": [
+        "messages": messages
+        if messages is not None
+        else [
             {
                 "role": "user",
                 "content": prompt,
@@ -89,6 +98,9 @@ def chat_payload(
         "max_tokens": max_tokens,
         "stream": stream,
     }
+
+    if stream_options is not None:
+        payload["stream_options"] = stream_options
 
     if tools is not None:
         payload["tools"] = tools
@@ -118,6 +130,7 @@ def stream_chat(
     headers: dict[str, str],
     *,
     drain: bool = False,
+    stop_after_chunks: int | None = None,
 ) -> tuple[str, str, bool]:
     """Consume an SSE chat completion stream and return (content, type, done).
 
@@ -126,6 +139,11 @@ def stream_chat(
     OpenAI SDKs do and what makes the server observe a downstream disconnect
     while it is still awaiting the backend's end of stream. With ``drain`` the
     client instead reads to the real end of the body.
+
+    ``stop_after_chunks`` hangs up in the middle of the answer instead, after
+    that many content chunks. The gateway must then finish reading the backend
+    on its own, so the stored turn is the whole answer and not the fragment the
+    client saw.
     """
 
     contents: list[str] = []
@@ -165,7 +183,38 @@ def stream_chat(
                     if isinstance(piece, str):
                         contents.append(piece)
 
+                if stop_after_chunks is not None and len(contents) >= stop_after_chunks:
+                    break
+
     return "".join(contents), content_type, saw_done
+
+
+def fetch_session(session_id: str, *, turns: int = 1) -> dict[str, Any]:
+    """Return a stored session once it holds the expected number of turns.
+
+    The gateway writes a transcript from the task that reads the backend, which
+    finishes just after the caller's last byte. A reader that checks
+    immediately can therefore arrive before the write, so this waits for the
+    turn it expects instead of asserting on a race.
+    """
+
+    deadline = time.monotonic() + TIMEOUT_SEC
+    record: Any = None
+
+    with httpx.Client(base_url=BASE_URL, timeout=TIMEOUT_SEC) as client:
+        while time.monotonic() < deadline:
+            response = client.get(f"/gateway/session/{session_id}")
+
+            if response.status_code == 200:
+                record = response.json()
+                if isinstance(record, dict) and len(record.get("turns", [])) >= turns:
+                    return record
+
+            time.sleep(0.2)
+
+    raise AssertionError(
+        f"session {session_id!r} did not reach {turns} recorded turn(s): {record!r}"
+    )
 
 
 def choice_text(choice: dict[str, Any]) -> str:

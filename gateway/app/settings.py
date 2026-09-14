@@ -91,6 +91,14 @@ class Settings:
     session_store_key_prefix: str
     session_store_ttl_sec: int
     session_store_max_connections: int
+    session_store_max_record_bytes: int
+    session_store_write_attempts: int
+
+    # Backend draining independent of the caller.
+    drain_after_disconnect: bool
+    drain_timeout_sec: float
+    drain_max_bytes: int
+    force_stream_usage: bool
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -181,4 +189,16 @@ class Settings:
             session_store_max_connections=int(
                 os.getenv("GATEWAY_SESSION_STORE_MAX_CONNECTIONS", "256")
             ),
+            session_store_max_record_bytes=int(
+                os.getenv("GATEWAY_SESSION_STORE_MAX_RECORD_BYTES", "4194304")
+            ),
+            session_store_write_attempts=int(
+                os.getenv("GATEWAY_SESSION_STORE_WRITE_ATTEMPTS", "5")
+            ),
+
+            # Backend draining independent of the caller.
+            drain_after_disconnect=_get_bool_env("GATEWAY_DRAIN_AFTER_DISCONNECT", True),
+            drain_timeout_sec=float(os.getenv("GATEWAY_DRAIN_TIMEOUT_SEC", "300")),
+            drain_max_bytes=int(os.getenv("GATEWAY_DRAIN_MAX_BYTES", "33554432")),
+            force_stream_usage=_get_bool_env("GATEWAY_FORCE_STREAM_USAGE", True),
         )

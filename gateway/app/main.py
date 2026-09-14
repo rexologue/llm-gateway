@@ -8,6 +8,7 @@ from typing import AsyncIterator
 from fastapi import FastAPI
 
 from app.routes import create_router
+from app.session_routes import create_session_router
 from app.settings import Settings
 from app.state import create_app_state
 from app.tracing import configure_tracing
@@ -30,6 +31,10 @@ def create_app() -> FastAPI:
             yield
 
         finally:
+            # Detached backend drains still write to the session store and hold
+            # backend connections, so they are awaited before anything they use
+            # is torn down.
+            await state.tasks.close(timeout=settings.drain_timeout_sec)
             await state.loki.stop()
             await state.session_tracker.close()
             await state.session_store.close()
@@ -38,6 +43,7 @@ def create_app() -> FastAPI:
     application = FastAPI(title="OpenAI Compatible Gateway", lifespan=lifespan)
     configure_tracing(application, settings)
     application.include_router(create_router())
+    application.include_router(create_session_router())
 
     return application
 

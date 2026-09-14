@@ -113,6 +113,20 @@ docker compose --env-file .env -f docker-compose.yaml up -d --build
 docker compose --env-file .env -f docker-compose.yaml --profile test run --rm gateway-smoke-tests
 ```
 
+### Юнит-тесты шлюза
+
+Логика чтения ответа бэкенда и сведения транскрипта покрыта юнит-тестами,
+которым не нужны ни бэкенд, ни Valkey, ни докер:
+
+```bash
+cd gateway
+pip install -r requirements-dev.txt
+pytest
+```
+
+Smoke-тесты (`--profile test`) по-прежнему проверяют шлюз целиком против живого
+бэкенда. Проверки вокруг инструментов включаются `SMOKE_CHECK_TOOLS=true`.
+
 Полезные URL на стороне шлюза:
 
 - шлюз: `http://0.0.0.0:9090`
