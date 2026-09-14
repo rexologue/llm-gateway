@@ -1428,24 +1428,17 @@ erl_crash.dump
 
 .neptune
 
-### Orchester local runtime config
+### Local runtime config
 **/.env
 **/.env.*
 !**/.env.example
 !**/.env.*.example
+deploy/llm/*.sh
+!deploy/llm/serve_sglang.example.sh
+!deploy/llm/serve_vllm.example.sh
 
-analysers/deploy/config.yaml
-!analysers/deploy/config.example.yaml
-
-deploy/data/
-orchestrator/deploy/data/
 .local/
-prompts/
 .codex
 .codex/
 AGENTS.md
 
-client/*.yaml
-!client/request.example.yaml
-
-*session.json
