@@ -108,6 +108,18 @@ LOKI_EVENTS_DROPPED_COUNTER = Counter(
     ["reason"],
 )
 
+MONITOR_PUSH_COUNTER = Counter(
+    "gateway_monitor_push_total",
+    "Conversation record deliveries attempted against the Monitor service",
+    ["status"],
+)
+
+MONITOR_RECORDS_DROPPED_COUNTER = Counter(
+    "gateway_monitor_records_dropped_total",
+    "Monitor conversation records dropped before delivery",
+    ["reason"],
+)
+
 ACTIVE_SESSION_GAUGE = Gauge(
     "gateway_active_sessions",
     "Current number of runtime session keys in Valkey DB 0",
@@ -182,6 +194,18 @@ class MetricsRequestContext:
 class GatewayMetrics:
     """Facade for all Prometheus metric updates in the gateway."""
 
+    def __init__(self) -> None:
+        """Initialize the readable mirror of the in-flight gauge.
+
+        A Prometheus gauge is write-only to its owner, and the concurrency an
+        exchange started under is a value the gateway itself has to read back:
+        it is the closest thing the gateway has to queue depth, since the real
+        queue lives inside the engine and is never exposed per request.
+        """
+
+        self._inflight = 0
+
+
     def context(
         self,
         *,
@@ -211,6 +235,7 @@ class GatewayMetrics:
         """Increment request counters for one accepted gateway request."""
 
         if context.track_inflight:
+            self._inflight += 1
             INFLIGHT_REQUESTS_GAUGE.inc()
 
         REQUEST_COUNTER.labels(
@@ -240,6 +265,7 @@ class GatewayMetrics:
         """Record terminal response counters and E2E histograms."""
 
         if context.track_inflight:
+            self._inflight -= 1
             INFLIGHT_REQUESTS_GAUGE.dec()
 
         labels = self.outcome_labels(
@@ -297,6 +323,12 @@ class GatewayMetrics:
             ).observe(ttft_sec)
 
 
+    def inflight(self) -> int:
+        """Return how many chat completions the gateway is currently holding."""
+
+        return self._inflight
+
+
     def set_active_sessions(self, count: int) -> None:
         """Set the active runtime session gauge."""
 
@@ -351,6 +383,18 @@ class GatewayMetrics:
         """Record one Loki event dropped before delivery."""
 
         LOKI_EVENTS_DROPPED_COUNTER.labels(reason=reason).inc()
+
+
+    def monitor_push(self, status: str) -> None:
+        """Record one Monitor delivery attempt outcome."""
+
+        MONITOR_PUSH_COUNTER.labels(status=status).inc()
+
+
+    def monitor_record_dropped(self, reason: str) -> None:
+        """Record one Monitor conversation record dropped before delivery."""
+
+        MONITOR_RECORDS_DROPPED_COUNTER.labels(reason=reason).inc()
 
 
     @staticmethod

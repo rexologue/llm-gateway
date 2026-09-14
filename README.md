@@ -186,6 +186,12 @@ Smoke-тесты разделены на два набора:
 | `GATEWAY_LOKI_APP_NAME` | Метка `app` в Loki; одинакова на всех шлюзах, разделяет их `engine` | `llm-gateway` |
 | `GATEWAY_LOKI_ENABLED` | Включить доставку событий в Loki | `true` |
 | `GATEWAY_LOKI_PUSH_URL` | URL Loki Push API | `http://llm-gateway-loki:3100/loki/api/v1/push` |
+| `GATEWAY_MONITOR_ENABLED` | Отправлять сессионные метрики инференса в Монитор | `false` |
+| `GATEWAY_MONITOR_API_URL` | Базовый адрес Монитора; путь `/api/v1/conv` задан его контрактом. Обязателен при включённом Мониторе | не задано |
+| `GATEWAY_MONITOR_SERVICE_NAME` | Поле `service` в записи; одинаково на всех шлюзах, разделяет их `gpu_node` | `llm-gateway` |
+| `GATEWAY_MONITOR_TIMEOUT_SEC` | Таймаут одного POST в Монитор | `1.0` |
+| `GATEWAY_MONITOR_QUEUE_MAX_SIZE` | Размер очереди записей; при переполнении записи отбрасываются | `10000` |
+| `GATEWAY_MONITOR_CONCURRENCY` | Число фоновых воркеров доставки | `4` |
 | `GATEWAY_OTEL_ENABLED` | Включить трассировку OpenTelemetry | `false` |
 | `GATEWAY_SESSIONS_ENABLED` | Вести сессии в Valkey. `false` превращает шлюз в чистый прокси: ни одного вызова к Valkey, `/gateway/session*` отвечают `503` | `true` |
 | `GATEWAY_VALKEY_URL` | Базовый URL **общего** Valkey из `deploy/observability`; рантайм использует DB 0, сохранённые чаты — DB 1 | `redis://llm-gateway-valkey:6379` |

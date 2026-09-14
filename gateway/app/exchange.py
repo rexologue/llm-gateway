@@ -26,6 +26,7 @@ from opentelemetry import trace
 
 from app.backend import ChatResponseReader, ChatTurn
 from app.http_utils import gateway_response_headers, utc_now_iso
+from app.metrics import GatewayMetrics
 from app.session_store import (
     DELIVERY_CLIENT_GONE,
     DELIVERY_COMPLETE,
@@ -55,6 +56,8 @@ tracer = trace.get_tracer(TRACER_NAME)
 
 QUEUE_MAX_CHUNKS = 64
 ERROR_BODY_EXCERPT_CHARS = 2000
+
+MONITOR_EVENT_INFERENCE_FINISHED = "inference_finished"
 
 WARN_HISTORY_DIVERGED = "session_history_diverged"
 WARN_DRAIN_TIMEOUT = "backend_drain_timeout"
@@ -142,6 +145,7 @@ class ProxyExchange:
 
         self.started_at = time.perf_counter()
         self.started_at_iso = utc_now_iso()
+        self.inflight_at_start = 0
 
         self.log = state.loki.context(
             route=route,
@@ -193,6 +197,7 @@ class ProxyExchange:
 
         await self.log.request()
         self.metrics.request()
+        self.inflight_at_start = self.state.metrics.inflight()
 
 
     async def run_chat(self, *, backend_headers: Mapping[str, str], backend_url: str) -> Response:
@@ -661,6 +666,7 @@ class ProxyExchange:
                 )
 
             await self._write_transcript(outcome, duration_sec)
+            self._report_to_monitor(outcome, duration_sec)
 
             self.metrics.response(
                 status_code=outcome.status_code if observed_answer else None,
@@ -725,6 +731,77 @@ class ProxyExchange:
             )
 
 
+    def _report_to_monitor(self, outcome: ExchangeOutcome, duration_sec: float) -> None:
+        """Hand this exchange to Monitor as one conversation record.
+
+        Monitor files everything under a conversation id, so an exchange
+        without a session has nothing to be filed under and is skipped rather
+        than sent under an invented one. The call never awaits: the record goes
+        into the publisher queue and the request path moves on.
+        """
+
+        if not self.state.monitor.enabled or self.session_id is None:
+            return
+
+        self.state.monitor.submit(
+            conv_id=self.session_id,
+            data=self._monitor_data(outcome, duration_sec),
+        )
+
+
+    def _monitor_data(
+        self,
+        outcome: ExchangeOutcome,
+        duration_sec: float,
+    ) -> dict[str, Any]:
+        """Describe this exchange in the field names Monitor is read by.
+
+        Monitor stores the payload verbatim and never interprets it, so the
+        naming is the whole contract: every key here has to mean the same thing
+        to a reader who has never seen this gateway.
+        """
+
+        settings = self.state.settings
+        ttft_sec = outcome.ttft_sec
+        generation_sec = duration_sec if ttft_sec is None else duration_sec - ttft_sec
+        tokens = self._token_counts(outcome)
+
+        data: dict[str, Any] = {
+            "service": settings.monitor_service_name,
+            "event": MONITOR_EVENT_INFERENCE_FINISHED,
+            # One gateway runs in front of one engine process, so the engine id
+            # is what names the GPU host that answered this request.
+            "gpu_node": settings.engine_id,
+            "conv_id": self.session_id,
+            "request_id": self.request_id,
+            "model_name": self.model,
+            "route": self.route,
+            "stream": self.stream,
+            "started_at": self.started_at_iso,
+            "finished_at": utc_now_iso(),
+            "e2e_ms": self._millis(duration_sec),
+            "ttft_ms": self._millis(ttft_sec),
+            "generation_ms": self._millis(generation_sec),
+            # The engine owns the real queue and never reports it per request.
+            # How many requests this gateway already held is the honest stand-in
+            # for how loaded the GPU was when this one arrived.
+            "inflight_at_start": self.inflight_at_start,
+            **tokens,
+            "tokens_per_sec": self._tokens_per_sec(tokens.get("tokens_out"), generation_sec),
+            "status_code": outcome.status_code,
+            "result": GatewayMetrics.result_from_status(
+                outcome.status_code,
+                outcome.client_gone,
+            ),
+            "delivery": outcome.delivery,
+            "finish_reason": outcome.turn.finish_reason if outcome.turn is not None else None,
+            "error_type": type(outcome.error).__name__ if outcome.error is not None else None,
+            "warn_reason": outcome.warn_reason,
+        }
+
+        return {key: value for key, value in data.items() if value is not None}
+
+
     def _params_snapshot(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Return the generation parameters this exchange actually used."""
 
@@ -757,6 +834,44 @@ class ProxyExchange:
             return outcome.warn_reason
 
         return None
+
+
+    @staticmethod
+    def _token_counts(outcome: ExchangeOutcome) -> dict[str, Any]:
+        """Return the token usage the backend reported, when it reported any."""
+
+        usage = outcome.turn.usage if outcome.turn is not None else None
+
+        if not isinstance(usage, dict):
+            return {}
+
+        return {
+            "tokens_in": usage.get("prompt_tokens"),
+            "tokens_out": usage.get("completion_tokens"),
+            "tokens_total": usage.get("total_tokens"),
+        }
+
+
+    @staticmethod
+    def _tokens_per_sec(tokens_out: Any, generation_sec: float) -> float | None:
+        """Return output token throughput across the generation window.
+
+        The window starts at the first token, not at the request: prefill and
+        whatever the engine spent queueing are already reported as ``ttft_ms``,
+        and folding them in here would make a busy queue read as a slow GPU.
+        """
+
+        if not isinstance(tokens_out, int) or tokens_out <= 0 or generation_sec <= 0:
+            return None
+
+        return round(tokens_out / generation_sec, 3)
+
+
+    @staticmethod
+    def _millis(seconds: float | None) -> float | None:
+        """Return a duration in milliseconds, or None when it was never measured."""
+
+        return None if seconds is None else round(seconds * 1000, 3)
 
 
     @staticmethod

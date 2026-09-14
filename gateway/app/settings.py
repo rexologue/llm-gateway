@@ -41,6 +41,25 @@ def _valkey_url_for_db(url: str, db: int) -> str:
     return urlunsplit((parts.scheme, parts.netloc, f"/{db}", parts.query, parts.fragment))
 
 
+def _require_monitor_base_url(enabled: bool) -> str:
+    """Return the Monitor base URL, refusing to enable Monitor without one.
+
+    An enabled sink with no address is the failure this check exists to
+    prevent: the gateway would keep running, keep queueing records, and keep
+    reporting nothing, and the mistake would surface as a Monitor dashboard
+    that is simply missing this engine.
+    """
+
+    base_url = os.getenv("GATEWAY_MONITOR_API_URL", "").strip().rstrip("/")
+
+    if enabled and not base_url:
+        raise ValueError(
+            "GATEWAY_MONITOR_API_URL must be set when GATEWAY_MONITOR_ENABLED is true"
+        )
+
+    return base_url
+
+
 def _require_engine_id() -> str:
     """Return the engine identity of this gateway, refusing to guess one.
 
@@ -95,6 +114,14 @@ class Settings:
     loki_flush_interval_sec: float
     loki_queue_max_size: int
 
+    # Monitor conversation metric delivery.
+    monitor_enabled: bool
+    monitor_base_url: str
+    monitor_service_name: str
+    monitor_timeout_sec: float
+    monitor_queue_max_size: int
+    monitor_concurrency: int
+
     # OpenTelemetry trace export.
     otel_enabled: bool
     otel_service_name: str
@@ -130,6 +157,7 @@ class Settings:
     def from_env(cls) -> "Settings":
         """Build settings from environment variables with production defaults."""
 
+        monitor_enabled = _get_bool_env("GATEWAY_MONITOR_ENABLED", False)
         otel_sample_ratio = max(
             0.0,
             min(1.0, float(os.getenv("GATEWAY_OTEL_SAMPLE_RATIO", "1.0"))),
@@ -182,6 +210,19 @@ class Settings:
                 os.getenv("GATEWAY_LOKI_FLUSH_INTERVAL_SEC", "1.0")
             ),
             loki_queue_max_size=int(os.getenv("GATEWAY_LOKI_QUEUE_MAX_SIZE", "10000")),
+
+            # Monitor conversation metric delivery.
+            monitor_enabled=monitor_enabled,
+            monitor_base_url=_require_monitor_base_url(monitor_enabled),
+            monitor_service_name=os.getenv(
+                "GATEWAY_MONITOR_SERVICE_NAME",
+                "llm-gateway",
+            ),
+            monitor_timeout_sec=float(os.getenv("GATEWAY_MONITOR_TIMEOUT_SEC", "1.0")),
+            monitor_queue_max_size=int(
+                os.getenv("GATEWAY_MONITOR_QUEUE_MAX_SIZE", "10000")
+            ),
+            monitor_concurrency=int(os.getenv("GATEWAY_MONITOR_CONCURRENCY", "4")),
 
             # OpenTelemetry trace export.
             otel_enabled=_get_bool_env("GATEWAY_OTEL_ENABLED", False),

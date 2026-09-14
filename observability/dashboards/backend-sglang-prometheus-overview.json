@@ -33,7 +33,7 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "## ⚠️ Если везде «No Data»\n\nЭто **не значит**, что метрики не экспортируются. Сначала убедитесь, что выбран **правильный Data Source** в переменных дашборда (сверху) — без этого панели не найдут данные. После выбора нажмите Refresh.\n\n---\n\n## Как пользоваться\n\nМетрики inference-бэкенда **SGLang**. Сверху выберите инстанс и модель (`sglang_instance`, `model_name`, `gpu_instance`) в переменных сверху. Секции: очереди и running/waiting запросы, throughput, латентности (TTFT/TPOT), cache, GPU. Наведите курсор на график для деталей.\n"
+        "content": "## ⚠️ Если везде «No Data»\n\nЭто **не значит**, что метрики не экспортируются. Сначала убедитесь, что выбран **правильный Data Source** в переменных дашборда (сверху) — без этого панели не найдут данные. После выбора нажмите Refresh.\n\n---\n\n## Как пользоваться\n\nМетрики inference-бэкенда **SGLang**. Машину выбирайте переменной **Движок** (`engine`) — то же значение работает в остальных дашбордах; модель — переменной `model_name`. `sglang_instance`, `node_instance` и `gpu_instance` оставлены как запасной вариант: они фильтруют по адресу таргета и требуют согласованного выбора всех трёх. Секции: очереди и running/waiting запросы, throughput, латентности (TTFT/TPOT), cache, GPU. Наведите курсор на график для деталей.\n"
       },
       "transparent": false
     },
@@ -115,7 +115,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(sglang:num_running_reqs{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "sum(sglang:num_running_reqs{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "",
           "refId": "A",
           "range": true
@@ -123,7 +123,7 @@
       ],
       "title": "Running requests",
       "type": "stat",
-      "description": "Running requests. Main query: sum(sglang:num_running_reqs{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})"
+      "description": "Running requests. Main query: sum(sglang:num_running_reqs{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})"
     },
     {
       "datasource": {
@@ -190,7 +190,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(sglang:num_queue_reqs{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "sum(sglang:num_queue_reqs{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "",
           "refId": "A",
           "range": true
@@ -198,7 +198,7 @@
       ],
       "title": "Waiting requests",
       "type": "stat",
-      "description": "Waiting requests. Main query: sum(sglang:num_queue_reqs{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})"
+      "description": "Waiting requests. Main query: sum(sglang:num_queue_reqs{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})"
     },
     {
       "datasource": {
@@ -265,7 +265,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(sglang:http_requests_total{instance=~\"$sglang_instance\"}[$__rate_interval]))",
+          "expr": "sum(rate(sglang:http_requests_total{instance=~\"$sglang_instance\",engine=~\"$engine\"}[$__rate_interval]))",
           "legendFormat": "",
           "refId": "A",
           "range": true
@@ -273,7 +273,7 @@
       ],
       "title": "HTTP RPS",
       "type": "stat",
-      "description": "HTTP RPS. Main query: sum(rate(sglang:http_requests_total{instance=~\"$sglang_instance\"}[$__rate_interval]))"
+      "description": "HTTP RPS. Main query: sum(rate(sglang:http_requests_total{instance=~\"$sglang_instance\",engine=~\"$engine\"}[$__rate_interval]))"
     },
     {
       "datasource": {
@@ -340,7 +340,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(sglang:http_responses_total{instance=~\"$sglang_instance\"}[$__rate_interval]))",
+          "expr": "sum(rate(sglang:http_responses_total{instance=~\"$sglang_instance\",engine=~\"$engine\"}[$__rate_interval]))",
           "legendFormat": "",
           "refId": "A",
           "range": true
@@ -348,7 +348,7 @@
       ],
       "title": "Completed req/s",
       "type": "stat",
-      "description": "Completed req/s. Main query: sum(rate(sglang:http_responses_total{instance=~\"$sglang_instance\"}[$__rate_interval]))"
+      "description": "Completed req/s. Main query: sum(rate(sglang:http_responses_total{instance=~\"$sglang_instance\",engine=~\"$engine\"}[$__rate_interval]))"
     },
     {
       "datasource": {
@@ -415,7 +415,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(sglang:time_to_first_token_seconds_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(sglang:time_to_first_token_seconds_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])))",
           "legendFormat": "",
           "refId": "A",
           "range": true
@@ -423,7 +423,7 @@
       ],
       "title": "TTFT p95",
       "type": "stat",
-      "description": "TTFT p95. Main query: histogram_quantile(0.95, sum by (le) (rate(sglang:time_to_first_token_seconds_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])))"
+      "description": "TTFT p95. Main query: histogram_quantile(0.95, sum by (le) (rate(sglang:time_to_first_token_seconds_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])))"
     },
     {
       "datasource": {
@@ -490,7 +490,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(sglang:e2e_request_latency_seconds_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(sglang:e2e_request_latency_seconds_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])))",
           "legendFormat": "",
           "refId": "A",
           "range": true
@@ -498,7 +498,7 @@
       ],
       "title": "E2E p95",
       "type": "stat",
-      "description": "E2E p95. Main query: histogram_quantile(0.95, sum by (le) (rate(sglang:e2e_request_latency_seconds_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])))"
+      "description": "E2E p95. Main query: histogram_quantile(0.95, sum by (le) (rate(sglang:e2e_request_latency_seconds_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])))"
     },
     {
       "datasource": {
@@ -565,7 +565,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(sglang:prompt_tokens_total{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval]))",
+          "expr": "sum(rate(sglang:prompt_tokens_total{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval]))",
           "legendFormat": "",
           "refId": "A",
           "range": true
@@ -573,7 +573,7 @@
       ],
       "title": "Prompt tok/s",
       "type": "stat",
-      "description": "Prompt tok/s. Main query: sum(rate(sglang:prompt_tokens_total{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval]))"
+      "description": "Prompt tok/s. Main query: sum(rate(sglang:prompt_tokens_total{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval]))"
     },
     {
       "datasource": {
@@ -640,7 +640,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(sglang:generation_tokens_total{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval]))",
+          "expr": "sum(rate(sglang:generation_tokens_total{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval]))",
           "legendFormat": "",
           "refId": "A",
           "range": true
@@ -648,7 +648,7 @@
       ],
       "title": "Generation tok/s",
       "type": "stat",
-      "description": "Generation tok/s. Main query: sum(rate(sglang:generation_tokens_total{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval]))"
+      "description": "Generation tok/s. Main query: sum(rate(sglang:generation_tokens_total{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval]))"
     },
     {
       "datasource": {
@@ -741,7 +741,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(sglang:num_running_reqs{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "sum(sglang:num_running_reqs{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "running",
           "refId": "A",
           "range": true
@@ -752,7 +752,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(sglang:num_queue_reqs{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "sum(sglang:num_queue_reqs{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "queued",
           "refId": "B",
           "range": true
@@ -763,7 +763,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(sglang:num_paused_reqs{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "sum(sglang:num_paused_reqs{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "paused",
           "refId": "C",
           "range": true
@@ -774,7 +774,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(sglang:num_retracted_reqs{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "sum(sglang:num_retracted_reqs{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "retracted",
           "refId": "D",
           "range": true
@@ -782,7 +782,7 @@
       ],
       "title": "Concurrency",
       "type": "timeseries",
-      "description": "Concurrency. Main query: sum(sglang:num_running_reqs{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}); sum(sglang:num_queue_reqs{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})"
+      "description": "Concurrency. Main query: sum(sglang:num_running_reqs{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}); sum(sglang:num_queue_reqs{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})"
     },
     {
       "datasource": {
@@ -875,7 +875,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(sglang:http_requests_total{instance=~\"$sglang_instance\"}[$__rate_interval]))",
+          "expr": "sum(rate(sglang:http_requests_total{instance=~\"$sglang_instance\",engine=~\"$engine\"}[$__rate_interval]))",
           "legendFormat": "HTTP requests/s",
           "refId": "A",
           "range": true
@@ -886,7 +886,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(sglang:http_responses_total{instance=~\"$sglang_instance\"}[$__rate_interval]))",
+          "expr": "sum(rate(sglang:http_responses_total{instance=~\"$sglang_instance\",engine=~\"$engine\"}[$__rate_interval]))",
           "legendFormat": "HTTP responses/s",
           "refId": "B",
           "range": true
@@ -897,7 +897,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(sglang:num_requests_total{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval]))",
+          "expr": "sum(rate(sglang:num_requests_total{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval]))",
           "legendFormat": "SGLang requests/s",
           "refId": "C",
           "range": true
@@ -908,7 +908,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(sglang:time_to_first_token_seconds_count{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval]))",
+          "expr": "sum(rate(sglang:time_to_first_token_seconds_count{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval]))",
           "legendFormat": "TTFT samples/s",
           "refId": "D",
           "range": true
@@ -919,7 +919,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(sglang:e2e_request_latency_seconds_count{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval]))",
+          "expr": "sum(rate(sglang:e2e_request_latency_seconds_count{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval]))",
           "legendFormat": "E2E samples/s",
           "refId": "E",
           "range": true
@@ -927,7 +927,7 @@
       ],
       "title": "Request rate",
       "type": "timeseries",
-      "description": "Request rate. Main query: sum(rate(sglang:http_requests_total{instance=~\"$sglang_instance\"}[$__rate_interval])); sum(rate(sglang:http_responses_total{instance=~\"$sglang_instance\"}[$__rate_interval]))"
+      "description": "Request rate. Main query: sum(rate(sglang:http_requests_total{instance=~\"$sglang_instance\",engine=~\"$engine\"}[$__rate_interval])); sum(rate(sglang:http_responses_total{instance=~\"$sglang_instance\",engine=~\"$engine\"}[$__rate_interval]))"
     },
     {
       "datasource": {
@@ -1020,7 +1020,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(sglang:prompt_tokens_total{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval]))",
+          "expr": "sum(rate(sglang:prompt_tokens_total{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval]))",
           "legendFormat": "prompt tok/s",
           "refId": "A",
           "range": true
@@ -1031,7 +1031,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(sglang:generation_tokens_total{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval]))",
+          "expr": "sum(rate(sglang:generation_tokens_total{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval]))",
           "legendFormat": "generation tok/s",
           "refId": "B",
           "range": true
@@ -1042,7 +1042,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(sglang:realtime_tokens_total{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval]))",
+          "expr": "sum(rate(sglang:realtime_tokens_total{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval]))",
           "legendFormat": "realtime tok/s",
           "refId": "C",
           "range": true
@@ -1053,7 +1053,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(sglang:gen_throughput{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "sum(sglang:gen_throughput{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "live gen throughput",
           "refId": "D",
           "range": true
@@ -1064,7 +1064,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(sglang:cached_tokens_total{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval]))",
+          "expr": "sum(rate(sglang:cached_tokens_total{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval]))",
           "legendFormat": "cached tok/s",
           "refId": "E",
           "range": true
@@ -1072,7 +1072,7 @@
       ],
       "title": "Token throughput",
       "type": "timeseries",
-      "description": "Token throughput. Main query: sum(rate(sglang:prompt_tokens_total{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])); sum(rate(sglang:generation_tokens_total{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval]))"
+      "description": "Token throughput. Main query: sum(rate(sglang:prompt_tokens_total{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])); sum(rate(sglang:generation_tokens_total{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval]))"
     },
     {
       "collapsed": false,
@@ -1178,7 +1178,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.50, sum by (le) (rate(sglang:time_to_first_token_seconds_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(sglang:time_to_first_token_seconds_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])))",
           "legendFormat": "TTFT p50",
           "refId": "A",
           "range": true
@@ -1189,7 +1189,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(sglang:time_to_first_token_seconds_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(sglang:time_to_first_token_seconds_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])))",
           "legendFormat": "TTFT p95",
           "refId": "B",
           "range": true
@@ -1200,7 +1200,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(sglang:time_to_first_token_seconds_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(sglang:time_to_first_token_seconds_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])))",
           "legendFormat": "TTFT p99",
           "refId": "C",
           "range": true
@@ -1211,7 +1211,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.50, sum by (le) (rate(sglang:e2e_request_latency_seconds_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(sglang:e2e_request_latency_seconds_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])))",
           "legendFormat": "E2E p50",
           "refId": "D",
           "range": true
@@ -1222,7 +1222,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(sglang:e2e_request_latency_seconds_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(sglang:e2e_request_latency_seconds_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])))",
           "legendFormat": "E2E p95",
           "refId": "E",
           "range": true
@@ -1233,7 +1233,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(sglang:e2e_request_latency_seconds_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(sglang:e2e_request_latency_seconds_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])))",
           "legendFormat": "E2E p99",
           "refId": "F",
           "range": true
@@ -1244,7 +1244,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(sglang:queue_time_seconds_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(sglang:queue_time_seconds_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])))",
           "legendFormat": "queue p95",
           "refId": "G",
           "range": true
@@ -1252,7 +1252,7 @@
       ],
       "title": "Core latency p50/p95/p99 + queue",
       "type": "timeseries",
-      "description": "Core latency p50/p95/p99 + queue. Main query: histogram_quantile(0.50, sum by (le) (rate(sglang:time_to_first_token_seconds_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval]))); histogram_quantile(0.95, sum by (le) (rate(sglang:time_to_first_token_seconds_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])))"
+      "description": "Core latency p50/p95/p99 + queue. Main query: histogram_quantile(0.50, sum by (le) (rate(sglang:time_to_first_token_seconds_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval]))); histogram_quantile(0.95, sum by (le) (rate(sglang:time_to_first_token_seconds_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])))"
     },
     {
       "datasource": {
@@ -1345,7 +1345,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.50, sum by (le) (rate(sglang:inter_token_latency_seconds_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(sglang:inter_token_latency_seconds_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])))",
           "legendFormat": "inter-token p50",
           "refId": "A",
           "range": true
@@ -1356,7 +1356,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(sglang:inter_token_latency_seconds_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(sglang:inter_token_latency_seconds_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])))",
           "legendFormat": "inter-token p95",
           "refId": "B",
           "range": true
@@ -1367,7 +1367,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(sglang:inter_token_latency_seconds_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(sglang:inter_token_latency_seconds_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])))",
           "legendFormat": "inter-token p99",
           "refId": "C",
           "range": true
@@ -1378,7 +1378,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "1 / clamp_min(sum(sglang:gen_throughput{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}), 1e-9)",
+          "expr": "1 / clamp_min(sum(sglang:gen_throughput{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}), 1e-9)",
           "legendFormat": "proxy: 1/live gen throughput",
           "refId": "D",
           "range": true
@@ -1389,7 +1389,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "1 / clamp_min(sum(rate(sglang:generation_tokens_total{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])), 1e-9)",
+          "expr": "1 / clamp_min(sum(rate(sglang:generation_tokens_total{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])), 1e-9)",
           "legendFormat": "proxy: 1/generation tok/s",
           "refId": "E",
           "range": true
@@ -1490,7 +1490,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(sglang:prompt_tokens_histogram_sum{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])) / clamp_min(sum(rate(sglang:prompt_tokens_histogram_count{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])), 1e-9)",
+          "expr": "sum(rate(sglang:prompt_tokens_histogram_sum{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])) / clamp_min(sum(rate(sglang:prompt_tokens_histogram_count{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])), 1e-9)",
           "legendFormat": "avg prompt tokens",
           "refId": "A",
           "range": true
@@ -1501,7 +1501,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(sglang:generation_tokens_histogram_sum{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])) / clamp_min(sum(rate(sglang:generation_tokens_histogram_count{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])), 1e-9)",
+          "expr": "sum(rate(sglang:generation_tokens_histogram_sum{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])) / clamp_min(sum(rate(sglang:generation_tokens_histogram_count{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])), 1e-9)",
           "legendFormat": "avg output tokens",
           "refId": "B",
           "range": true
@@ -1512,7 +1512,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "avg(sglang:context_len{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "avg(sglang:context_len{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "context_len",
           "refId": "C",
           "range": true
@@ -1523,7 +1523,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "avg(sglang:max_total_num_tokens{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "avg(sglang:max_total_num_tokens{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "max_total_num_tokens",
           "refId": "D",
           "range": true
@@ -1531,7 +1531,7 @@
       ],
       "title": "Average request size",
       "type": "timeseries",
-      "description": "Average request size. Main query: sum(rate(sglang:prompt_tokens_histogram_sum{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])) / clamp_min(sum(rate(sglang:prompt_tokens_histogram_count{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])), 1e-9); sum(rate(sglang:generation_tokens_histogram_sum{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])) / clamp_min(sum(rate(sglang:generation_tokens_histogram_count{instance=~\"$sglang_instance\",model_name=~\"$model_..."
+      "description": "Average request size. Main query: sum(rate(sglang:prompt_tokens_histogram_sum{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])) / clamp_min(sum(rate(sglang:prompt_tokens_histogram_count{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])), 1e-9); sum(rate(sglang:generation_tokens_histogram_sum{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])) / clamp_min(sum(rate(sglang:generation_tokens_histogram_count{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_..."
     },
     {
       "datasource": {
@@ -1624,7 +1624,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "100 * avg(sglang:cache_hit_rate{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "100 * avg(sglang:cache_hit_rate{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "cache hit %",
           "refId": "A",
           "range": true
@@ -1635,7 +1635,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "100 * avg(sglang:token_usage{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "100 * avg(sglang:token_usage{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "token usage %",
           "refId": "B",
           "range": true
@@ -1646,7 +1646,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "100 * avg(sglang:full_token_usage{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "100 * avg(sglang:full_token_usage{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "full token usage %",
           "refId": "C",
           "range": true
@@ -1657,7 +1657,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "100 * avg(sglang:pending_prealloc_token_usage{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "100 * avg(sglang:pending_prealloc_token_usage{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "pending prealloc token usage %",
           "refId": "D",
           "range": true
@@ -1668,7 +1668,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "100 * avg(sglang:new_token_ratio{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "100 * avg(sglang:new_token_ratio{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "new token ratio %",
           "refId": "E",
           "range": true
@@ -1676,7 +1676,7 @@
       ],
       "title": "Cache hit ratio and token pressure",
       "type": "timeseries",
-      "description": "Cache hit ratio and token pressure. Main query: 100 * avg(sglang:cache_hit_rate{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}); 100 * avg(sglang:token_usage{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})"
+      "description": "Cache hit ratio and token pressure. Main query: 100 * avg(sglang:cache_hit_rate{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}); 100 * avg(sglang:token_usage{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})"
     },
     {
       "datasource": {
@@ -1769,7 +1769,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(sglang:kv_used_tokens{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "sum(sglang:kv_used_tokens{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "KV used",
           "refId": "A",
           "range": true
@@ -1780,7 +1780,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(sglang:kv_available_tokens{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "sum(sglang:kv_available_tokens{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "KV available",
           "refId": "B",
           "range": true
@@ -1791,7 +1791,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(sglang:kv_evictable_tokens{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "sum(sglang:kv_evictable_tokens{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "KV evictable",
           "refId": "C",
           "range": true
@@ -1802,7 +1802,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(sglang:num_used_tokens{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "sum(sglang:num_used_tokens{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "used tokens",
           "refId": "D",
           "range": true
@@ -1813,7 +1813,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(sglang:max_total_num_tokens{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "sum(sglang:max_total_num_tokens{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "max total tokens",
           "refId": "E",
           "range": true
@@ -1821,7 +1821,7 @@
       ],
       "title": "KV / used tokens",
       "type": "timeseries",
-      "description": "KV / used tokens. Main query: sum(sglang:kv_used_tokens{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}); sum(sglang:kv_available_tokens{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})"
+      "description": "KV / used tokens. Main query: sum(sglang:kv_used_tokens{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}); sum(sglang:kv_available_tokens{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})"
     },
     {
       "collapsed": false,
@@ -1926,14 +1926,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "avg by (gpu) (DCGM_FI_DEV_GPU_UTIL{instance=~\"$gpu_instance\"})",
+          "expr": "avg by (gpu) (DCGM_FI_DEV_GPU_UTIL{instance=~\"$gpu_instance\",host=~\"$host\"})",
           "legendFormat": "GPU {{gpu}}",
           "refId": "A"
         }
       ],
       "title": "GPU utilization by GPU",
       "type": "timeseries",
-      "description": "GPU utilization by GPU. Main query: avg by (gpu) (DCGM_FI_DEV_GPU_UTIL{instance=~\"$gpu_instance\"})"
+      "description": "GPU utilization by GPU. Main query: avg by (gpu) (DCGM_FI_DEV_GPU_UTIL{instance=~\"$gpu_instance\",host=~\"$host\"})"
     },
     {
       "datasource": {
@@ -2025,7 +2025,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\"}",
+          "expr": "DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\",host=~\"$host\"}",
           "legendFormat": "GPU {{gpu}} used",
           "refId": "A"
         },
@@ -2034,14 +2034,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "DCGM_FI_DEV_FB_FREE{instance=~\"$gpu_instance\"}",
+          "expr": "DCGM_FI_DEV_FB_FREE{instance=~\"$gpu_instance\",host=~\"$host\"}",
           "legendFormat": "GPU {{gpu}} free",
           "refId": "B"
         }
       ],
       "title": "GPU memory used by GPU",
       "type": "timeseries",
-      "description": "GPU memory used by GPU. Main query: DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\"}; DCGM_FI_DEV_FB_FREE{instance=~\"$gpu_instance\"}"
+      "description": "GPU memory used by GPU. Main query: DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\",host=~\"$host\"}; DCGM_FI_DEV_FB_FREE{instance=~\"$gpu_instance\",host=~\"$host\"}"
     },
     {
       "datasource": {
@@ -2133,14 +2133,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "DCGM_FI_DEV_GPU_TEMP{instance=~\"$gpu_instance\"}",
+          "expr": "DCGM_FI_DEV_GPU_TEMP{instance=~\"$gpu_instance\",host=~\"$host\"}",
           "legendFormat": "GPU {{gpu}}",
           "refId": "A"
         }
       ],
       "title": "GPU temperature by GPU",
       "type": "timeseries",
-      "description": "GPU temperature by GPU. Main query: DCGM_FI_DEV_GPU_TEMP{instance=~\"$gpu_instance\"}"
+      "description": "GPU temperature by GPU. Main query: DCGM_FI_DEV_GPU_TEMP{instance=~\"$gpu_instance\",host=~\"$host\"}"
     },
     {
       "datasource": {
@@ -2232,14 +2232,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "DCGM_FI_DEV_POWER_USAGE{instance=~\"$gpu_instance\"}",
+          "expr": "DCGM_FI_DEV_POWER_USAGE{instance=~\"$gpu_instance\",host=~\"$host\"}",
           "legendFormat": "GPU {{gpu}}",
           "refId": "A"
         }
       ],
       "title": "GPU power by GPU",
       "type": "timeseries",
-      "description": "GPU power by GPU. Main query: DCGM_FI_DEV_POWER_USAGE{instance=~\"$gpu_instance\"}"
+      "description": "GPU power by GPU. Main query: DCGM_FI_DEV_POWER_USAGE{instance=~\"$gpu_instance\",host=~\"$host\"}"
     },
     {
       "datasource": {
@@ -2307,14 +2307,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "avg(DCGM_FI_DEV_GPU_UTIL{instance=~\"$gpu_instance\"})",
+          "expr": "avg(DCGM_FI_DEV_GPU_UTIL{instance=~\"$gpu_instance\",host=~\"$host\"})",
           "legendFormat": "",
           "refId": "A"
         }
       ],
       "title": "GPU util avg",
       "type": "stat",
-      "description": "GPU util avg. Main query: avg(DCGM_FI_DEV_GPU_UTIL{instance=~\"$gpu_instance\"})"
+      "description": "GPU util avg. Main query: avg(DCGM_FI_DEV_GPU_UTIL{instance=~\"$gpu_instance\",host=~\"$host\"})"
     },
     {
       "datasource": {
@@ -2382,14 +2382,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "100 * sum(DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\"}) / clamp_min(sum(DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\"} + DCGM_FI_DEV_FB_FREE{instance=~\"$gpu_instance\"}), 1e-9)",
+          "expr": "100 * sum(DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\",host=~\"$host\"}) / clamp_min(sum(DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\",host=~\"$host\"} + DCGM_FI_DEV_FB_FREE{instance=~\"$gpu_instance\",host=~\"$host\"}), 1e-9)",
           "legendFormat": "",
           "refId": "A"
         }
       ],
       "title": "GPU mem util avg",
       "type": "stat",
-      "description": "GPU mem util avg. Main query: 100 * sum(DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\"}) / clamp_min(sum(DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\"} + DCGM_FI_DEV_FB_FREE{instance=~\"$gpu_instance\"}), 1e-9)"
+      "description": "GPU mem util avg. Main query: 100 * sum(DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\",host=~\"$host\"}) / clamp_min(sum(DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\",host=~\"$host\"} + DCGM_FI_DEV_FB_FREE{instance=~\"$gpu_instance\",host=~\"$host\"}), 1e-9)"
     },
     {
       "datasource": {
@@ -2451,14 +2451,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(DCGM_FI_DEV_XID_ERRORS{instance=~\"$gpu_instance\"})",
+          "expr": "sum(DCGM_FI_DEV_XID_ERRORS{instance=~\"$gpu_instance\",host=~\"$host\"})",
           "legendFormat": "",
           "refId": "A"
         }
       ],
       "title": "XID errors",
       "type": "stat",
-      "description": "XID errors. Main query: sum(DCGM_FI_DEV_XID_ERRORS{instance=~\"$gpu_instance\"})"
+      "description": "XID errors. Main query: sum(DCGM_FI_DEV_XID_ERRORS{instance=~\"$gpu_instance\",host=~\"$host\"})"
     },
     {
       "datasource": {
@@ -2520,14 +2520,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(DCGM_FI_DEV_ROW_REMAP_FAILURE{instance=~\"$gpu_instance\"})",
+          "expr": "sum(DCGM_FI_DEV_ROW_REMAP_FAILURE{instance=~\"$gpu_instance\",host=~\"$host\"})",
           "legendFormat": "",
           "refId": "A"
         }
       ],
       "title": "Row remap failures",
       "type": "stat",
-      "description": "Row remap failures. Main query: sum(DCGM_FI_DEV_ROW_REMAP_FAILURE{instance=~\"$gpu_instance\"})"
+      "description": "Row remap failures. Main query: sum(DCGM_FI_DEV_ROW_REMAP_FAILURE{instance=~\"$gpu_instance\",host=~\"$host\"})"
     },
     {
       "datasource": {
@@ -2593,14 +2593,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(DCGM_FI_DEV_CORRECTABLE_REMAPPED_ROWS{instance=~\"$gpu_instance\"})",
+          "expr": "sum(DCGM_FI_DEV_CORRECTABLE_REMAPPED_ROWS{instance=~\"$gpu_instance\",host=~\"$host\"})",
           "legendFormat": "",
           "refId": "A"
         }
       ],
       "title": "Correctable remapped rows",
       "type": "stat",
-      "description": "Correctable remapped rows. Main query: sum(DCGM_FI_DEV_CORRECTABLE_REMAPPED_ROWS{instance=~\"$gpu_instance\"})"
+      "description": "Correctable remapped rows. Main query: sum(DCGM_FI_DEV_CORRECTABLE_REMAPPED_ROWS{instance=~\"$gpu_instance\",host=~\"$host\"})"
     },
     {
       "datasource": {
@@ -2662,14 +2662,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(DCGM_FI_DEV_UNCORRECTABLE_REMAPPED_ROWS{instance=~\"$gpu_instance\"})",
+          "expr": "sum(DCGM_FI_DEV_UNCORRECTABLE_REMAPPED_ROWS{instance=~\"$gpu_instance\",host=~\"$host\"})",
           "legendFormat": "",
           "refId": "A"
         }
       ],
       "title": "Uncorrectable remapped rows",
       "type": "stat",
-      "description": "Uncorrectable remapped rows. Main query: sum(DCGM_FI_DEV_UNCORRECTABLE_REMAPPED_ROWS{instance=~\"$gpu_instance\"})"
+      "description": "Uncorrectable remapped rows. Main query: sum(DCGM_FI_DEV_UNCORRECTABLE_REMAPPED_ROWS{instance=~\"$gpu_instance\",host=~\"$host\"})"
     },
     {
       "datasource": {
@@ -2734,7 +2734,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(sglang:estimated_flops_per_gpu_total{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval]))",
+          "expr": "sum(rate(sglang:estimated_flops_per_gpu_total{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval]))",
           "legendFormat": "",
           "refId": "A",
           "range": true
@@ -2742,7 +2742,7 @@
       ],
       "title": "Estimated FLOPs/s",
       "type": "stat",
-      "description": "Estimated FLOPs/s. Main query: sum(rate(sglang:estimated_flops_per_gpu_total{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval]))"
+      "description": "Estimated FLOPs/s. Main query: sum(rate(sglang:estimated_flops_per_gpu_total{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval]))"
     },
     {
       "datasource": {
@@ -2805,7 +2805,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(sglang:estimated_read_bytes_per_gpu_total{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])) + sum(rate(sglang:estimated_write_bytes_per_gpu_total{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval]))",
+          "expr": "sum(rate(sglang:estimated_read_bytes_per_gpu_total{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])) + sum(rate(sglang:estimated_write_bytes_per_gpu_total{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval]))",
           "legendFormat": "",
           "refId": "A",
           "range": true
@@ -2813,7 +2813,7 @@
       ],
       "title": "Est. GPU BW B/s",
       "type": "stat",
-      "description": "Est. GPU BW B/s. Main query: sum(rate(sglang:estimated_read_bytes_per_gpu_total{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])) + sum(rate(sglang:estimated_write_bytes_per_gpu_total{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval]))"
+      "description": "Est. GPU BW B/s. Main query: sum(rate(sglang:estimated_read_bytes_per_gpu_total{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])) + sum(rate(sglang:estimated_write_bytes_per_gpu_total{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval]))"
     },
     {
       "collapsed": false,
@@ -2918,14 +2918,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "100 * (1 - avg(rate(node_cpu_seconds_total{instance=~\"$node_instance\",mode=\"idle\"}[5m])))",
+          "expr": "100 * (1 - avg(rate(node_cpu_seconds_total{instance=~\"$node_instance\",host=~\"$host\",mode=\"idle\"}[5m])))",
           "legendFormat": "CPU busy %",
           "refId": "A"
         }
       ],
       "title": "Host CPU busy %",
       "type": "timeseries",
-      "description": "Host CPU busy %. Main query: 100 * (1 - avg(rate(node_cpu_seconds_total{instance=~\"$node_instance\",mode=\"idle\"}[5m])))"
+      "description": "Host CPU busy %. Main query: 100 * (1 - avg(rate(node_cpu_seconds_total{instance=~\"$node_instance\",host=~\"$host\",mode=\"idle\"}[5m])))"
     },
     {
       "datasource": {
@@ -3017,7 +3017,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "node_load1{instance=~\"$node_instance\"}",
+          "expr": "node_load1{instance=~\"$node_instance\",host=~\"$host\"}",
           "legendFormat": "load1",
           "refId": "A"
         },
@@ -3026,7 +3026,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "node_load5{instance=~\"$node_instance\"}",
+          "expr": "node_load5{instance=~\"$node_instance\",host=~\"$host\"}",
           "legendFormat": "load5",
           "refId": "B"
         },
@@ -3035,14 +3035,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "node_load15{instance=~\"$node_instance\"}",
+          "expr": "node_load15{instance=~\"$node_instance\",host=~\"$host\"}",
           "legendFormat": "load15",
           "refId": "C"
         }
       ],
       "title": "Host load",
       "type": "timeseries",
-      "description": "Host load. Main query: node_load1{instance=~\"$node_instance\"}; node_load5{instance=~\"$node_instance\"}"
+      "description": "Host load. Main query: node_load1{instance=~\"$node_instance\",host=~\"$host\"}; node_load5{instance=~\"$node_instance\",host=~\"$host\"}"
     },
     {
       "datasource": {
@@ -3134,14 +3134,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "100 * (1 - node_memory_MemAvailable_bytes{instance=~\"$node_instance\"} / node_memory_MemTotal_bytes{instance=~\"$node_instance\"})",
+          "expr": "100 * (1 - node_memory_MemAvailable_bytes{instance=~\"$node_instance\",host=~\"$host\"} / node_memory_MemTotal_bytes{instance=~\"$node_instance\",host=~\"$host\"})",
           "legendFormat": "RAM used %",
           "refId": "A"
         }
       ],
       "title": "Host RAM usage %",
       "type": "timeseries",
-      "description": "Host RAM usage %. Main query: 100 * (1 - node_memory_MemAvailable_bytes{instance=~\"$node_instance\"} / node_memory_MemTotal_bytes{instance=~\"$node_instance\"})"
+      "description": "Host RAM usage %. Main query: 100 * (1 - node_memory_MemAvailable_bytes{instance=~\"$node_instance\",host=~\"$host\"} / node_memory_MemTotal_bytes{instance=~\"$node_instance\",host=~\"$host\"})"
     },
     {
       "datasource": {
@@ -3233,14 +3233,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "100 * (1 - node_memory_SwapFree_bytes{instance=~\"$node_instance\"} / clamp_min(node_memory_SwapTotal_bytes{instance=~\"$node_instance\"}, 1))",
+          "expr": "100 * (1 - node_memory_SwapFree_bytes{instance=~\"$node_instance\",host=~\"$host\"} / clamp_min(node_memory_SwapTotal_bytes{instance=~\"$node_instance\",host=~\"$host\"}, 1))",
           "legendFormat": "swap used %",
           "refId": "A"
         }
       ],
       "title": "Host swap usage %",
       "type": "timeseries",
-      "description": "Host swap usage %. Main query: 100 * (1 - node_memory_SwapFree_bytes{instance=~\"$node_instance\"} / clamp_min(node_memory_SwapTotal_bytes{instance=~\"$node_instance\"}, 1))"
+      "description": "Host swap usage %. Main query: 100 * (1 - node_memory_SwapFree_bytes{instance=~\"$node_instance\",host=~\"$host\"} / clamp_min(node_memory_SwapTotal_bytes{instance=~\"$node_instance\",host=~\"$host\"}, 1))"
     },
     {
       "datasource": {
@@ -3334,7 +3334,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "100 * rate(sglang:process_cpu_seconds_total{instance=~\"$sglang_instance\"}[$__rate_interval])",
+          "expr": "100 * rate(sglang:process_cpu_seconds_total{instance=~\"$sglang_instance\",engine=~\"$engine\"}[$__rate_interval])",
           "legendFormat": "SGLang process CPU % of one core",
           "refId": "A",
           "range": true
@@ -3434,7 +3434,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "avg(sglang:engine_startup_time{instance=~\"$sglang_instance\"})",
+          "expr": "avg(sglang:engine_startup_time{instance=~\"$sglang_instance\",engine=~\"$engine\"})",
           "legendFormat": "engine startup time",
           "refId": "A",
           "range": true
@@ -3445,7 +3445,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "avg(sglang:engine_load_weights_time{instance=~\"$sglang_instance\"})",
+          "expr": "avg(sglang:engine_load_weights_time{instance=~\"$sglang_instance\",engine=~\"$engine\"})",
           "legendFormat": "engine load weights time",
           "refId": "B",
           "range": true
@@ -3456,7 +3456,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "avg(sglang:startup_available_gpu_memory_gb{instance=~\"$sglang_instance\"})",
+          "expr": "avg(sglang:startup_available_gpu_memory_gb{instance=~\"$sglang_instance\",engine=~\"$engine\"})",
           "legendFormat": "startup available GPU memory GB",
           "refId": "C",
           "range": true
@@ -3464,7 +3464,7 @@
       ],
       "title": "SGLang startup/load state",
       "type": "timeseries",
-      "description": "SGLang startup/load state. Main query: avg(sglang:engine_startup_time{instance=~\"$sglang_instance\"}); avg(sglang:engine_load_weights_time{instance=~\"$sglang_instance\"})"
+      "description": "SGLang startup/load state. Main query: avg(sglang:engine_startup_time{instance=~\"$sglang_instance\",engine=~\"$engine\"}); avg(sglang:engine_load_weights_time{instance=~\"$sglang_instance\",engine=~\"$engine\"})"
     },
     {
       "datasource": {
@@ -3557,7 +3557,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(sglang:http_requests_total{instance=~\"$sglang_instance\"}[$__rate_interval]))",
+          "expr": "sum(rate(sglang:http_requests_total{instance=~\"$sglang_instance\",engine=~\"$engine\"}[$__rate_interval]))",
           "legendFormat": "HTTP requests/s",
           "refId": "A",
           "range": true
@@ -3568,7 +3568,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(sglang:http_responses_total{instance=~\"$sglang_instance\"}[$__rate_interval]))",
+          "expr": "sum(rate(sglang:http_responses_total{instance=~\"$sglang_instance\",engine=~\"$engine\"}[$__rate_interval]))",
           "legendFormat": "HTTP responses/s",
           "refId": "B",
           "range": true
@@ -3579,7 +3579,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(sglang:http_requests_active{instance=~\"$sglang_instance\"})",
+          "expr": "sum(sglang:http_requests_active{instance=~\"$sglang_instance\",engine=~\"$engine\"})",
           "legendFormat": "active HTTP requests",
           "refId": "C",
           "range": true
@@ -3590,7 +3590,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(sglang:num_requests_total{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval]))",
+          "expr": "sum(rate(sglang:num_requests_total{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval]))",
           "legendFormat": "SGLang requests/s",
           "refId": "D",
           "range": true
@@ -3598,7 +3598,7 @@
       ],
       "title": "SGLang HTTP / request activity",
       "type": "timeseries",
-      "description": "SGLang HTTP / request activity. Main query: sum(rate(sglang:http_requests_total{instance=~\"$sglang_instance\"}[$__rate_interval])); sum(rate(sglang:http_responses_total{instance=~\"$sglang_instance\"}[$__rate_interval]))"
+      "description": "SGLang HTTP / request activity. Main query: sum(rate(sglang:http_requests_total{instance=~\"$sglang_instance\",engine=~\"$engine\"}[$__rate_interval])); sum(rate(sglang:http_responses_total{instance=~\"$sglang_instance\",engine=~\"$engine\"}[$__rate_interval]))"
     },
     {
       "datasource": {
@@ -3690,14 +3690,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "100 * (1 - node_filesystem_avail_bytes{instance=~\"$node_instance\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"} / node_filesystem_size_bytes{instance=~\"$node_instance\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"})",
+          "expr": "100 * (1 - node_filesystem_avail_bytes{instance=~\"$node_instance\",host=~\"$host\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"} / node_filesystem_size_bytes{instance=~\"$node_instance\",host=~\"$host\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"})",
           "legendFormat": "{{mountpoint}}",
           "refId": "A"
         }
       ],
       "title": "Filesystem usage % by mountpoint",
       "type": "timeseries",
-      "description": "Filesystem usage % by mountpoint. Main query: 100 * (1 - node_filesystem_avail_bytes{instance=~\"$node_instance\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"} / node_filesystem_size_bytes{instance=~\"$node_instance\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"})"
+      "description": "Filesystem usage % by mountpoint. Main query: 100 * (1 - node_filesystem_avail_bytes{instance=~\"$node_instance\",host=~\"$host\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"} / node_filesystem_size_bytes{instance=~\"$node_instance\",host=~\"$host\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"})"
     },
     {
       "datasource": {
@@ -3789,7 +3789,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(node_disk_read_bytes_total{instance=~\"$node_instance\",device!~\"loop.*|ram.*\"}[5m]))",
+          "expr": "sum(rate(node_disk_read_bytes_total{instance=~\"$node_instance\",host=~\"$host\",device!~\"loop.*|ram.*\"}[5m]))",
           "legendFormat": "read B/s",
           "refId": "A"
         },
@@ -3798,14 +3798,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(node_disk_written_bytes_total{instance=~\"$node_instance\",device!~\"loop.*|ram.*\"}[5m]))",
+          "expr": "sum(rate(node_disk_written_bytes_total{instance=~\"$node_instance\",host=~\"$host\",device!~\"loop.*|ram.*\"}[5m]))",
           "legendFormat": "write B/s",
           "refId": "B"
         }
       ],
       "title": "Disk throughput",
       "type": "timeseries",
-      "description": "Disk throughput. Main query: sum(rate(node_disk_read_bytes_total{instance=~\"$node_instance\",device!~\"loop.*|ram.*\"}[5m])); sum(rate(node_disk_written_bytes_total{instance=~\"$node_instance\",device!~\"loop.*|ram.*\"}[5m]))"
+      "description": "Disk throughput. Main query: sum(rate(node_disk_read_bytes_total{instance=~\"$node_instance\",host=~\"$host\",device!~\"loop.*|ram.*\"}[5m])); sum(rate(node_disk_written_bytes_total{instance=~\"$node_instance\",host=~\"$host\",device!~\"loop.*|ram.*\"}[5m]))"
     },
     {
       "datasource": {
@@ -3897,7 +3897,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(node_pressure_cpu_waiting_seconds_total{instance=~\"$node_instance\"}[5m]))",
+          "expr": "sum(rate(node_pressure_cpu_waiting_seconds_total{instance=~\"$node_instance\",host=~\"$host\"}[5m]))",
           "legendFormat": "CPU waiting/s",
           "refId": "A"
         },
@@ -3906,7 +3906,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(node_pressure_io_waiting_seconds_total{instance=~\"$node_instance\"}[5m]))",
+          "expr": "sum(rate(node_pressure_io_waiting_seconds_total{instance=~\"$node_instance\",host=~\"$host\"}[5m]))",
           "legendFormat": "IO waiting/s",
           "refId": "B"
         },
@@ -3915,14 +3915,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(node_pressure_memory_waiting_seconds_total{instance=~\"$node_instance\"}[5m]))",
+          "expr": "sum(rate(node_pressure_memory_waiting_seconds_total{instance=~\"$node_instance\",host=~\"$host\"}[5m]))",
           "legendFormat": "memory waiting/s",
           "refId": "C"
         }
       ],
       "title": "Pressure stall indicators",
       "type": "timeseries",
-      "description": "Pressure stall indicators. Main query: sum(rate(node_pressure_cpu_waiting_seconds_total{instance=~\"$node_instance\"}[5m])); sum(rate(node_pressure_io_waiting_seconds_total{instance=~\"$node_instance\"}[5m]))"
+      "description": "Pressure stall indicators. Main query: sum(rate(node_pressure_cpu_waiting_seconds_total{instance=~\"$node_instance\",host=~\"$host\"}[5m])); sum(rate(node_pressure_io_waiting_seconds_total{instance=~\"$node_instance\",host=~\"$host\"}[5m]))"
     },
     {
       "datasource": {
@@ -4014,7 +4014,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "node_netstat_Tcp_CurrEstab{instance=~\"$node_instance\"}",
+          "expr": "node_netstat_Tcp_CurrEstab{instance=~\"$node_instance\",host=~\"$host\"}",
           "legendFormat": "TCP established",
           "refId": "A"
         },
@@ -4023,7 +4023,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(node_netstat_TcpExt_ListenDrops{instance=~\"$node_instance\"}[5m]))",
+          "expr": "sum(rate(node_netstat_TcpExt_ListenDrops{instance=~\"$node_instance\",host=~\"$host\"}[5m]))",
           "legendFormat": "listen drops/s",
           "refId": "B"
         },
@@ -4032,7 +4032,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(node_netstat_TcpExt_ListenOverflows{instance=~\"$node_instance\"}[5m]))",
+          "expr": "sum(rate(node_netstat_TcpExt_ListenOverflows{instance=~\"$node_instance\",host=~\"$host\"}[5m]))",
           "legendFormat": "listen overflows/s",
           "refId": "C"
         },
@@ -4041,14 +4041,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(node_netstat_Tcp_RetransSegs{instance=~\"$node_instance\"}[5m]))",
+          "expr": "sum(rate(node_netstat_Tcp_RetransSegs{instance=~\"$node_instance\",host=~\"$host\"}[5m]))",
           "legendFormat": "TCP retrans/s",
           "refId": "D"
         }
       ],
       "title": "TCP backlog / retransmit signals",
       "type": "timeseries",
-      "description": "TCP backlog / retransmit signals. Main query: node_netstat_Tcp_CurrEstab{instance=~\"$node_instance\"}; sum(rate(node_netstat_TcpExt_ListenDrops{instance=~\"$node_instance\"}[5m]))"
+      "description": "TCP backlog / retransmit signals. Main query: node_netstat_Tcp_CurrEstab{instance=~\"$node_instance\",host=~\"$host\"}; sum(rate(node_netstat_TcpExt_ListenDrops{instance=~\"$node_instance\",host=~\"$host\"}[5m]))"
     },
     {
       "datasource": {
@@ -4141,7 +4141,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "100 * (1 - irate(node_cpu_seconds_total{instance=~\"$node_instance\", mode=\"idle\"}[10s]))",
+          "expr": "100 * (1 - irate(node_cpu_seconds_total{instance=~\"$node_instance\",host=~\"$host\", mode=\"idle\"}[10s]))",
           "legendFormat": "cpu{{cpu}}",
           "refId": "A",
           "editorMode": "code",
@@ -4150,7 +4150,7 @@
       ],
       "title": "Per vCPU load",
       "type": "timeseries",
-      "description": "Per vCPU load. Main query: 100 * (1 - irate(node_cpu_seconds_total{instance=~\"$node_instance\", mode=\"idle\"}[10s]))"
+      "description": "Per vCPU load. Main query: 100 * (1 - irate(node_cpu_seconds_total{instance=~\"$node_instance\",host=~\"$host\", mode=\"idle\"}[10s]))"
     },
     {
       "collapsed": true,
@@ -4698,14 +4698,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "max(up{instance=~\"$sglang_instance\"})",
+          "expr": "max(up{instance=~\"$sglang_instance\",engine=~\"$engine\"})",
           "legendFormat": "",
           "refId": "A"
         }
       ],
       "title": "SGLang target up",
       "type": "stat",
-      "description": "SGLang target up. Main query: max(up{instance=~\"$sglang_instance\"})"
+      "description": "SGLang target up. Main query: max(up{instance=~\"$sglang_instance\",engine=~\"$engine\"})"
     },
     {
       "datasource": {
@@ -4767,14 +4767,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "max(up{instance=~\"$node_instance\"})",
+          "expr": "max(up{instance=~\"$node_instance\",host=~\"$host\"})",
           "legendFormat": "",
           "refId": "A"
         }
       ],
       "title": "Node exporter up",
       "type": "stat",
-      "description": "Node exporter up. Main query: max(up{instance=~\"$node_instance\"})"
+      "description": "Node exporter up. Main query: max(up{instance=~\"$node_instance\",host=~\"$host\"})"
     },
     {
       "datasource": {
@@ -4836,14 +4836,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "max(up{instance=~\"$gpu_instance\"})",
+          "expr": "max(up{instance=~\"$gpu_instance\",host=~\"$host\"})",
           "legendFormat": "",
           "refId": "A"
         }
       ],
       "title": "DCGM exporter up",
       "type": "stat",
-      "description": "DCGM exporter up. Main query: max(up{instance=~\"$gpu_instance\"})"
+      "description": "DCGM exporter up. Main query: max(up{instance=~\"$gpu_instance\",host=~\"$host\"})"
     },
     {
       "datasource": {
@@ -4905,14 +4905,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(sglang:num_queue_reqs{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "sum(sglang:num_queue_reqs{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "",
           "refId": "A"
         }
       ],
       "title": "SGLang queued requests",
       "type": "stat",
-      "description": "SGLang queued requests. Main query: sum(sglang:num_queue_reqs{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})"
+      "description": "SGLang queued requests. Main query: sum(sglang:num_queue_reqs{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})"
     },
     {
       "datasource": {
@@ -4978,14 +4978,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "max(scrape_duration_seconds{instance=~\"$sglang_instance\"})",
+          "expr": "max(scrape_duration_seconds{instance=~\"$sglang_instance\",engine=~\"$engine\"})",
           "legendFormat": "",
           "refId": "A"
         }
       ],
       "title": "Scrape duration (SGLang)",
       "type": "stat",
-      "description": "Scrape duration (SGLang). Main query: max(scrape_duration_seconds{instance=~\"$sglang_instance\"})"
+      "description": "Scrape duration (SGLang). Main query: max(scrape_duration_seconds{instance=~\"$sglang_instance\",engine=~\"$engine\"})"
     },
     {
       "datasource": {
@@ -5051,14 +5051,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "max(scrape_samples_scraped{instance=~\"$sglang_instance\"})",
+          "expr": "max(scrape_samples_scraped{instance=~\"$sglang_instance\",engine=~\"$engine\"})",
           "legendFormat": "",
           "refId": "A"
         }
       ],
       "title": "Scraped samples (SGLang)",
       "type": "stat",
-      "description": "Scraped samples (SGLang). Main query: max(scrape_samples_scraped{instance=~\"$sglang_instance\"})"
+      "description": "Scraped samples (SGLang). Main query: max(scrape_samples_scraped{instance=~\"$sglang_instance\",engine=~\"$engine\"})"
     },
     {
       "datasource": {
@@ -5125,7 +5125,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(sglang:http_requests_active{instance=~\"$sglang_instance\"})",
+          "expr": "sum(sglang:http_requests_active{instance=~\"$sglang_instance\",engine=~\"$engine\"})",
           "legendFormat": "",
           "refId": "A",
           "range": true
@@ -5133,7 +5133,7 @@
       ],
       "title": "HTTP requests active",
       "type": "stat",
-      "description": "HTTP requests active. Main query: sum(sglang:http_requests_active{instance=~\"$sglang_instance\"})"
+      "description": "HTTP requests active. Main query: sum(sglang:http_requests_active{instance=~\"$sglang_instance\",engine=~\"$engine\"})"
     },
     {
       "datasource": {
@@ -5200,7 +5200,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "max(sglang:is_cuda_graph{instance=~\"$sglang_instance\"})",
+          "expr": "max(sglang:is_cuda_graph{instance=~\"$sglang_instance\",engine=~\"$engine\"})",
           "legendFormat": "",
           "refId": "A",
           "range": true
@@ -5208,7 +5208,7 @@
       ],
       "title": "CUDA graph enabled",
       "type": "stat",
-      "description": "CUDA graph enabled. Main query: max(sglang:is_cuda_graph{instance=~\"$sglang_instance\"})"
+      "description": "CUDA graph enabled. Main query: max(sglang:is_cuda_graph{instance=~\"$sglang_instance\",engine=~\"$engine\"})"
     },
     {
       "collapsed": false,
@@ -5283,14 +5283,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(node_sockstat_sockets_used{instance=~\"$node_instance\"})",
+          "expr": "sum(node_sockstat_sockets_used{instance=~\"$node_instance\",host=~\"$host\"})",
           "legendFormat": "__auto",
           "refId": "A"
         }
       ],
       "title": "Sockets current",
       "type": "stat",
-      "description": "Sockets current. Main query: sum(node_sockstat_sockets_used{instance=~\"$node_instance\"})"
+      "description": "Sockets current. Main query: sum(node_sockstat_sockets_used{instance=~\"$node_instance\",host=~\"$host\"})"
     },
     {
       "datasource": {
@@ -5353,7 +5353,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "max_over_time((sum(node_sockstat_sockets_used{instance=~\"$node_instance\"}))[$__range:])",
+          "expr": "max_over_time((sum(node_sockstat_sockets_used{instance=~\"$node_instance\",host=~\"$host\"}))[$__range:])",
           "legendFormat": "__auto",
           "refId": "A"
         }
@@ -5422,7 +5422,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(sglang:http_requests_active{instance=~\"$sglang_instance\"})",
+          "expr": "sum(sglang:http_requests_active{instance=~\"$sglang_instance\",engine=~\"$engine\"})",
           "legendFormat": "",
           "refId": "A",
           "range": true
@@ -5430,7 +5430,7 @@
       ],
       "title": "HTTP active current",
       "type": "stat",
-      "description": "HTTP active current. Main query: sum(sglang:http_requests_active{instance=~\"$sglang_instance\"})"
+      "description": "HTTP active current. Main query: sum(sglang:http_requests_active{instance=~\"$sglang_instance\",engine=~\"$engine\"})"
     },
     {
       "datasource": {
@@ -5494,7 +5494,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "max_over_time((sum(sglang:http_requests_active{instance=~\"$sglang_instance\"}))[$__range:])",
+          "expr": "max_over_time((sum(sglang:http_requests_active{instance=~\"$sglang_instance\",engine=~\"$engine\"}))[$__range:])",
           "legendFormat": "",
           "refId": "A",
           "range": true
@@ -5563,14 +5563,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(sglang:time_to_first_token_seconds_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(sglang:time_to_first_token_seconds_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])))",
           "legendFormat": "__auto",
           "refId": "A"
         }
       ],
       "title": "TTFT p95 current",
       "type": "stat",
-      "description": "TTFT p95 current. Main query: histogram_quantile(0.95, sum by (le) (rate(sglang:time_to_first_token_seconds_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])))"
+      "description": "TTFT p95 current. Main query: histogram_quantile(0.95, sum by (le) (rate(sglang:time_to_first_token_seconds_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])))"
     },
     {
       "datasource": {
@@ -5633,7 +5633,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "max_over_time((histogram_quantile(0.95, sum by (le) (rate(sglang:time_to_first_token_seconds_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval]))))[$__range:])",
+          "expr": "max_over_time((histogram_quantile(0.95, sum by (le) (rate(sglang:time_to_first_token_seconds_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval]))))[$__range:])",
           "legendFormat": "__auto",
           "refId": "A"
         }
@@ -5701,14 +5701,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(sglang:e2e_request_latency_seconds_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(sglang:e2e_request_latency_seconds_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])))",
           "legendFormat": "__auto",
           "refId": "A"
         }
       ],
       "title": "E2E p95 current",
       "type": "stat",
-      "description": "E2E p95 current. Main query: histogram_quantile(0.95, sum by (le) (rate(sglang:e2e_request_latency_seconds_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])))"
+      "description": "E2E p95 current. Main query: histogram_quantile(0.95, sum by (le) (rate(sglang:e2e_request_latency_seconds_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])))"
     },
     {
       "datasource": {
@@ -5771,7 +5771,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "max_over_time((histogram_quantile(0.95, sum by (le) (rate(sglang:e2e_request_latency_seconds_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval]))))[$__range:])",
+          "expr": "max_over_time((histogram_quantile(0.95, sum by (le) (rate(sglang:e2e_request_latency_seconds_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval]))))[$__range:])",
           "legendFormat": "__auto",
           "refId": "A"
         }
@@ -5841,14 +5841,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "100 * (1 - avg(rate(node_cpu_seconds_total{instance=~\"$node_instance\",mode=\"idle\"}[5m])))",
+          "expr": "100 * (1 - avg(rate(node_cpu_seconds_total{instance=~\"$node_instance\",host=~\"$host\",mode=\"idle\"}[5m])))",
           "legendFormat": "__auto",
           "refId": "A"
         }
       ],
       "title": "CPU busy current",
       "type": "stat",
-      "description": "CPU busy current. Main query: 100 * (1 - avg(rate(node_cpu_seconds_total{instance=~\"$node_instance\",mode=\"idle\"}[5m])))"
+      "description": "CPU busy current. Main query: 100 * (1 - avg(rate(node_cpu_seconds_total{instance=~\"$node_instance\",host=~\"$host\",mode=\"idle\"}[5m])))"
     },
     {
       "datasource": {
@@ -5913,7 +5913,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "max_over_time((100 * (1 - avg(rate(node_cpu_seconds_total{instance=~\"$node_instance\",mode=\"idle\"}[5m]))))[$__range:])",
+          "expr": "max_over_time((100 * (1 - avg(rate(node_cpu_seconds_total{instance=~\"$node_instance\",host=~\"$host\",mode=\"idle\"}[5m]))))[$__range:])",
           "legendFormat": "__auto",
           "refId": "A"
         }
@@ -5983,14 +5983,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "100 * (1 - sum(node_memory_MemAvailable_bytes{instance=~\"$node_instance\"}) / clamp_min(sum(node_memory_MemTotal_bytes{instance=~\"$node_instance\"}), 1))",
+          "expr": "100 * (1 - sum(node_memory_MemAvailable_bytes{instance=~\"$node_instance\",host=~\"$host\"}) / clamp_min(sum(node_memory_MemTotal_bytes{instance=~\"$node_instance\",host=~\"$host\"}), 1))",
           "legendFormat": "__auto",
           "refId": "A"
         }
       ],
       "title": "RAM used current",
       "type": "stat",
-      "description": "RAM used current. Main query: 100 * (1 - sum(node_memory_MemAvailable_bytes{instance=~\"$node_instance\"}) / clamp_min(sum(node_memory_MemTotal_bytes{instance=~\"$node_instance\"}), 1))"
+      "description": "RAM used current. Main query: 100 * (1 - sum(node_memory_MemAvailable_bytes{instance=~\"$node_instance\",host=~\"$host\"}) / clamp_min(sum(node_memory_MemTotal_bytes{instance=~\"$node_instance\",host=~\"$host\"}), 1))"
     },
     {
       "datasource": {
@@ -6055,7 +6055,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "max_over_time((100 * (1 - sum(node_memory_MemAvailable_bytes{instance=~\"$node_instance\"}) / clamp_min(sum(node_memory_MemTotal_bytes{instance=~\"$node_instance\"}), 1)))[$__range:])",
+          "expr": "max_over_time((100 * (1 - sum(node_memory_MemAvailable_bytes{instance=~\"$node_instance\",host=~\"$host\"}) / clamp_min(sum(node_memory_MemTotal_bytes{instance=~\"$node_instance\",host=~\"$host\"}), 1)))[$__range:])",
           "legendFormat": "__auto",
           "refId": "A"
         }
@@ -6125,14 +6125,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "avg(DCGM_FI_DEV_GPU_UTIL{instance=~\"$gpu_instance\"})",
+          "expr": "avg(DCGM_FI_DEV_GPU_UTIL{instance=~\"$gpu_instance\",host=~\"$host\"})",
           "legendFormat": "__auto",
           "refId": "A"
         }
       ],
       "title": "GPU util current",
       "type": "stat",
-      "description": "GPU util current. Main query: avg(DCGM_FI_DEV_GPU_UTIL{instance=~\"$gpu_instance\"})"
+      "description": "GPU util current. Main query: avg(DCGM_FI_DEV_GPU_UTIL{instance=~\"$gpu_instance\",host=~\"$host\"})"
     },
     {
       "datasource": {
@@ -6197,7 +6197,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "max_over_time((avg(DCGM_FI_DEV_GPU_UTIL{instance=~\"$gpu_instance\"}))[$__range:])",
+          "expr": "max_over_time((avg(DCGM_FI_DEV_GPU_UTIL{instance=~\"$gpu_instance\",host=~\"$host\"}))[$__range:])",
           "legendFormat": "__auto",
           "refId": "A"
         }
@@ -6267,14 +6267,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "100 * sum(DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\"}) / clamp_min(sum(DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\"} + DCGM_FI_DEV_FB_FREE{instance=~\"$gpu_instance\"}), 1e-9)",
+          "expr": "100 * sum(DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\",host=~\"$host\"}) / clamp_min(sum(DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\",host=~\"$host\"} + DCGM_FI_DEV_FB_FREE{instance=~\"$gpu_instance\",host=~\"$host\"}), 1e-9)",
           "legendFormat": "__auto",
           "refId": "A"
         }
       ],
       "title": "GPU mem current",
       "type": "stat",
-      "description": "GPU mem current. Main query: 100 * sum(DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\"}) / clamp_min(sum(DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\"} + DCGM_FI_DEV_FB_FREE{instance=~\"$gpu_instance\"}), 1e-9)"
+      "description": "GPU mem current. Main query: 100 * sum(DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\",host=~\"$host\"}) / clamp_min(sum(DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\",host=~\"$host\"} + DCGM_FI_DEV_FB_FREE{instance=~\"$gpu_instance\",host=~\"$host\"}), 1e-9)"
     },
     {
       "datasource": {
@@ -6339,7 +6339,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "max_over_time((100 * sum(DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\"}) / clamp_min(sum(DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\"} + DCGM_FI_DEV_FB_FREE{instance=~\"$gpu_instance\"}), 1e-9))[$__range:])",
+          "expr": "max_over_time((100 * sum(DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\",host=~\"$host\"}) / clamp_min(sum(DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\",host=~\"$host\"} + DCGM_FI_DEV_FB_FREE{instance=~\"$gpu_instance\",host=~\"$host\"}), 1e-9))[$__range:])",
           "legendFormat": "__auto",
           "refId": "A"
         }
@@ -6407,14 +6407,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(node_disk_read_bytes_total{instance=~\"$node_instance\",device!~\"loop.*|ram.*\"}[5m]))",
+          "expr": "sum(rate(node_disk_read_bytes_total{instance=~\"$node_instance\",host=~\"$host\",device!~\"loop.*|ram.*\"}[5m]))",
           "legendFormat": "__auto",
           "refId": "A"
         }
       ],
       "title": "Disk read current",
       "type": "stat",
-      "description": "Disk read current. Main query: sum(rate(node_disk_read_bytes_total{instance=~\"$node_instance\",device!~\"loop.*|ram.*\"}[5m]))"
+      "description": "Disk read current. Main query: sum(rate(node_disk_read_bytes_total{instance=~\"$node_instance\",host=~\"$host\",device!~\"loop.*|ram.*\"}[5m]))"
     },
     {
       "datasource": {
@@ -6477,7 +6477,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "max_over_time((sum(rate(node_disk_read_bytes_total{instance=~\"$node_instance\",device!~\"loop.*|ram.*\"}[5m])))[$__range:])",
+          "expr": "max_over_time((sum(rate(node_disk_read_bytes_total{instance=~\"$node_instance\",host=~\"$host\",device!~\"loop.*|ram.*\"}[5m])))[$__range:])",
           "legendFormat": "__auto",
           "refId": "A"
         }
@@ -6545,14 +6545,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(node_disk_written_bytes_total{instance=~\"$node_instance\",device!~\"loop.*|ram.*\"}[5m]))",
+          "expr": "sum(rate(node_disk_written_bytes_total{instance=~\"$node_instance\",host=~\"$host\",device!~\"loop.*|ram.*\"}[5m]))",
           "legendFormat": "__auto",
           "refId": "A"
         }
       ],
       "title": "Disk write current",
       "type": "stat",
-      "description": "Disk write current. Main query: sum(rate(node_disk_written_bytes_total{instance=~\"$node_instance\",device!~\"loop.*|ram.*\"}[5m]))"
+      "description": "Disk write current. Main query: sum(rate(node_disk_written_bytes_total{instance=~\"$node_instance\",host=~\"$host\",device!~\"loop.*|ram.*\"}[5m]))"
     },
     {
       "datasource": {
@@ -6615,7 +6615,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "max_over_time((sum(rate(node_disk_written_bytes_total{instance=~\"$node_instance\",device!~\"loop.*|ram.*\"}[5m])))[$__range:])",
+          "expr": "max_over_time((sum(rate(node_disk_written_bytes_total{instance=~\"$node_instance\",host=~\"$host\",device!~\"loop.*|ram.*\"}[5m])))[$__range:])",
           "legendFormat": "__auto",
           "refId": "A"
         }
@@ -6697,7 +6697,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(node_filesystem_size_bytes{instance=~\"$node_instance\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"} - node_filesystem_avail_bytes{instance=~\"$node_instance\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"})",
+          "expr": "sum(node_filesystem_size_bytes{instance=~\"$node_instance\",host=~\"$host\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"} - node_filesystem_avail_bytes{instance=~\"$node_instance\",host=~\"$host\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"})",
           "legendFormat": "__auto",
           "refId": "A"
         }
@@ -6766,7 +6766,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(node_filesystem_avail_bytes{instance=~\"$node_instance\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"})",
+          "expr": "sum(node_filesystem_avail_bytes{instance=~\"$node_instance\",host=~\"$host\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"})",
           "legendFormat": "__auto",
           "refId": "A"
         }
@@ -6837,7 +6837,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "100 * sum(node_filesystem_size_bytes{instance=~\"$node_instance\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"} - node_filesystem_avail_bytes{instance=~\"$node_instance\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"}) / clamp_min(sum(node_filesystem_size_bytes{instance=~\"$node_instance\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"}), 1)",
+          "expr": "100 * sum(node_filesystem_size_bytes{instance=~\"$node_instance\",host=~\"$host\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"} - node_filesystem_avail_bytes{instance=~\"$node_instance\",host=~\"$host\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"}) / clamp_min(sum(node_filesystem_size_bytes{instance=~\"$node_instance\",host=~\"$host\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"}), 1)",
           "legendFormat": "__auto",
           "refId": "A"
         }
@@ -6906,7 +6906,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(node_netstat_Tcp_CurrEstab{instance=~\"$node_instance\"})",
+          "expr": "sum(node_netstat_Tcp_CurrEstab{instance=~\"$node_instance\",host=~\"$host\"})",
           "legendFormat": "__auto",
           "refId": "A"
         }
@@ -7005,7 +7005,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (instance) (node_filesystem_size_bytes{instance=~\"$node_instance\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"} - node_filesystem_avail_bytes{instance=~\"$node_instance\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"})",
+          "expr": "sum by (instance) (node_filesystem_size_bytes{instance=~\"$node_instance\",host=~\"$host\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"} - node_filesystem_avail_bytes{instance=~\"$node_instance\",host=~\"$host\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"})",
           "legendFormat": "{{instance}} used",
           "refId": "A"
         }
@@ -7104,7 +7104,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "100 * sum by (instance) (node_filesystem_size_bytes{instance=~\"$node_instance\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"} - node_filesystem_avail_bytes{instance=~\"$node_instance\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"}) / clamp_min(sum by (instance) (node_filesystem_size_bytes{instance=~\"$node_instance\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"}), 1)",
+          "expr": "100 * sum by (instance) (node_filesystem_size_bytes{instance=~\"$node_instance\",host=~\"$host\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"} - node_filesystem_avail_bytes{instance=~\"$node_instance\",host=~\"$host\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"}) / clamp_min(sum by (instance) (node_filesystem_size_bytes{instance=~\"$node_instance\",host=~\"$host\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"}), 1)",
           "legendFormat": "{{instance}} %",
           "refId": "A"
         }
@@ -7203,7 +7203,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(increase(sglang:time_to_first_token_seconds_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])) by (le)",
+          "expr": "sum(increase(sglang:time_to_first_token_seconds_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])) by (le)",
           "format": "heatmap",
           "legendFormat": "{{le}}",
           "refId": "A"
@@ -7211,7 +7211,7 @@
       ],
       "title": "SGLang TTFT latency heatmap",
       "type": "heatmap",
-      "description": "SGLang TTFT latency heatmap. Main query: sum(increase(sglang:time_to_first_token_seconds_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])) by (le)"
+      "description": "SGLang TTFT latency heatmap. Main query: sum(increase(sglang:time_to_first_token_seconds_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])) by (le)"
     },
     {
       "datasource": {
@@ -7291,7 +7291,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(increase(sglang:e2e_request_latency_seconds_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])) by (le)",
+          "expr": "sum(increase(sglang:e2e_request_latency_seconds_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])) by (le)",
           "format": "heatmap",
           "legendFormat": "{{le}}",
           "refId": "A"
@@ -7299,7 +7299,7 @@
       ],
       "title": "SGLang E2E latency heatmap",
       "type": "heatmap",
-      "description": "SGLang E2E latency heatmap. Main query: sum(increase(sglang:e2e_request_latency_seconds_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])) by (le)"
+      "description": "SGLang E2E latency heatmap. Main query: sum(increase(sglang:e2e_request_latency_seconds_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])) by (le)"
     },
     {
       "datasource": {
@@ -7394,7 +7394,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.50, sum by (le, stage) (rate(sglang:per_stage_req_latency_seconds_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.50, sum by (le, stage) (rate(sglang:per_stage_req_latency_seconds_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])))",
           "legendFormat": "{{stage}} p50",
           "refId": "A",
           "range": true
@@ -7405,7 +7405,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le, stage) (rate(sglang:per_stage_req_latency_seconds_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le, stage) (rate(sglang:per_stage_req_latency_seconds_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])))",
           "legendFormat": "{{stage}} p95",
           "refId": "B",
           "range": true
@@ -7416,13 +7416,13 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le, stage) (rate(sglang:per_stage_req_latency_seconds_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (le, stage) (rate(sglang:per_stage_req_latency_seconds_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])))",
           "legendFormat": "{{stage}} p99",
           "refId": "C",
           "range": true
         }
       ],
-      "description": "SGLang per-stage request latency. Main query: histogram_quantile(0.50, sum by (le, stage) (rate(sglang:per_stage_req_latency_seconds_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval]))); histogram_quantile(0.95, sum by (le, stage) (rate(sglang:per_stage_req_latency_seconds_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])))"
+      "description": "SGLang per-stage request latency. Main query: histogram_quantile(0.50, sum by (le, stage) (rate(sglang:per_stage_req_latency_seconds_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval]))); histogram_quantile(0.95, sum by (le, stage) (rate(sglang:per_stage_req_latency_seconds_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])))"
     },
     {
       "collapsed": false,
@@ -7529,7 +7529,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "100 * avg(sglang:token_usage{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "100 * avg(sglang:token_usage{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "token usage %",
           "refId": "A",
           "range": true
@@ -7540,7 +7540,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "100 * avg(sglang:full_token_usage{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "100 * avg(sglang:full_token_usage{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "full token usage %",
           "refId": "B",
           "range": true
@@ -7551,7 +7551,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "100 * avg(sglang:pending_prealloc_token_usage{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "100 * avg(sglang:pending_prealloc_token_usage{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "pending prealloc token usage %",
           "refId": "C",
           "range": true
@@ -7562,7 +7562,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "100 * avg(sglang:swa_token_usage{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "100 * avg(sglang:swa_token_usage{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "SWA token usage %",
           "refId": "D",
           "range": true
@@ -7573,7 +7573,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "100 * avg(sglang:mamba_usage{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "100 * avg(sglang:mamba_usage{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "Mamba usage %",
           "refId": "E",
           "range": true
@@ -7587,7 +7587,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Cached tokens / context. Main query: sum(rate(sglang:cached_tokens_total{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])); avg(sglang:context_len{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+      "description": "Cached tokens / context. Main query: sum(rate(sglang:cached_tokens_total{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])); avg(sglang:context_len{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -7674,7 +7674,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(sglang:cached_tokens_total{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval]))",
+          "expr": "sum(rate(sglang:cached_tokens_total{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval]))",
           "legendFormat": "cached tokens/s",
           "refId": "A",
           "range": true
@@ -7685,7 +7685,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "avg(sglang:context_len{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "avg(sglang:context_len{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "context len",
           "refId": "B",
           "range": true
@@ -7696,7 +7696,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "avg(sglang:max_total_num_tokens{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "avg(sglang:max_total_num_tokens{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "max total num tokens",
           "refId": "C",
           "range": true
@@ -7707,7 +7707,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "avg(sglang:page_size{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "avg(sglang:page_size{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "page size",
           "refId": "D",
           "range": true
@@ -7718,7 +7718,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "avg(sglang:num_pages{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "avg(sglang:num_pages{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "num pages",
           "refId": "E",
           "range": true
@@ -7732,7 +7732,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Decode / CUDA graph signals. Main query: avg(sglang:decode_sum_seq_lens{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}); sum(rate(sglang:cuda_graph_passes_total{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval]))",
+      "description": "Decode / CUDA graph signals. Main query: avg(sglang:decode_sum_seq_lens{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}); sum(rate(sglang:cuda_graph_passes_total{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval]))",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -7819,7 +7819,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "avg(sglang:decode_sum_seq_lens{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "avg(sglang:decode_sum_seq_lens{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "decode sum seq lens",
           "refId": "A",
           "range": true
@@ -7830,7 +7830,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(sglang:cuda_graph_passes_total{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval]))",
+          "expr": "sum(rate(sglang:cuda_graph_passes_total{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval]))",
           "legendFormat": "CUDA graph passes/s",
           "refId": "B",
           "range": true
@@ -7841,7 +7841,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "max(sglang:is_cuda_graph{instance=~\"$sglang_instance\"})",
+          "expr": "max(sglang:is_cuda_graph{instance=~\"$sglang_instance\",engine=~\"$engine\"})",
           "legendFormat": "is CUDA graph",
           "refId": "C",
           "range": true
@@ -7852,7 +7852,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "avg(sglang:utilization{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "avg(sglang:utilization{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "utilization",
           "refId": "D",
           "range": true
@@ -7965,7 +7965,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(sglang:num_queue_reqs{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "sum(sglang:num_queue_reqs{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "main queue",
           "refId": "A",
           "range": true
@@ -7976,7 +7976,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(sglang:num_prefill_inflight_queue_reqs{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "sum(sglang:num_prefill_inflight_queue_reqs{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "prefill inflight",
           "refId": "B",
           "range": true
@@ -7987,7 +7987,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(sglang:num_prefill_prealloc_queue_reqs{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "sum(sglang:num_prefill_prealloc_queue_reqs{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "prefill prealloc",
           "refId": "C",
           "range": true
@@ -7998,7 +7998,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(sglang:num_decode_prealloc_queue_reqs{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "sum(sglang:num_decode_prealloc_queue_reqs{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "decode prealloc",
           "refId": "D",
           "range": true
@@ -8009,7 +8009,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(sglang:num_decode_transfer_queue_reqs{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "sum(sglang:num_decode_transfer_queue_reqs{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "decode transfer",
           "refId": "E",
           "range": true
@@ -8020,7 +8020,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(sglang:num_grammar_queue_reqs{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "sum(sglang:num_grammar_queue_reqs{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "grammar queue",
           "refId": "F",
           "range": true
@@ -8028,7 +8028,7 @@
       ],
       "title": "Queue breakdown",
       "type": "timeseries",
-      "description": "Queue breakdown. Main query: sum(sglang:num_queue_reqs{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}); sum(sglang:num_prefill_inflight_queue_reqs{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})"
+      "description": "Queue breakdown. Main query: sum(sglang:num_queue_reqs{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}); sum(sglang:num_prefill_inflight_queue_reqs{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})"
     },
     {
       "datasource": {
@@ -8121,7 +8121,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.50, sum by (le) (rate(sglang:queue_time_seconds_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(sglang:queue_time_seconds_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])))",
           "legendFormat": "queue p50",
           "refId": "A",
           "range": true
@@ -8132,7 +8132,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(sglang:queue_time_seconds_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(sglang:queue_time_seconds_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])))",
           "legendFormat": "queue p95",
           "refId": "B",
           "range": true
@@ -8143,7 +8143,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(sglang:queue_time_seconds_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(sglang:queue_time_seconds_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])))",
           "legendFormat": "queue p99",
           "refId": "C",
           "range": true
@@ -8154,7 +8154,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le, stage) (rate(sglang:per_stage_req_latency_seconds_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le, stage) (rate(sglang:per_stage_req_latency_seconds_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])))",
           "legendFormat": "{{stage}} p95",
           "refId": "D",
           "range": true
@@ -8162,7 +8162,7 @@
       ],
       "title": "Queue / stage latency",
       "type": "timeseries",
-      "description": "Queue / stage latency. Main query: histogram_quantile(0.50, sum by (le) (rate(sglang:queue_time_seconds_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval]))); histogram_quantile(0.95, sum by (le) (rate(sglang:queue_time_seconds_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])))"
+      "description": "Queue / stage latency. Main query: histogram_quantile(0.50, sum by (le) (rate(sglang:queue_time_seconds_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval]))); histogram_quantile(0.95, sum by (le) (rate(sglang:queue_time_seconds_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])))"
     },
     {
       "collapsed": false,
@@ -8268,7 +8268,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(sglang:kv_used_tokens{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "sum(sglang:kv_used_tokens{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "KV used",
           "refId": "A",
           "range": true
@@ -8279,7 +8279,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(sglang:kv_available_tokens{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "sum(sglang:kv_available_tokens{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "KV available",
           "refId": "B",
           "range": true
@@ -8290,7 +8290,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(sglang:kv_evictable_tokens{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "sum(sglang:kv_evictable_tokens{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "KV evictable",
           "refId": "C",
           "range": true
@@ -8301,7 +8301,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(sglang:num_used_tokens{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "sum(sglang:num_used_tokens{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "num used tokens",
           "refId": "D",
           "range": true
@@ -8312,7 +8312,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(sglang:max_total_num_tokens{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "sum(sglang:max_total_num_tokens{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "max total tokens",
           "refId": "E",
           "range": true
@@ -8320,7 +8320,7 @@
       ],
       "title": "KV token pool",
       "type": "timeseries",
-      "description": "KV token pool. Main query: sum(sglang:kv_used_tokens{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}); sum(sglang:kv_available_tokens{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})"
+      "description": "KV token pool. Main query: sum(sglang:kv_used_tokens{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}); sum(sglang:kv_available_tokens{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})"
     },
     {
       "datasource": {
@@ -8413,7 +8413,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "100 * avg(sglang:cache_hit_rate{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "100 * avg(sglang:cache_hit_rate{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "cache hit %",
           "refId": "A",
           "range": true
@@ -8424,7 +8424,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "100 * avg(sglang:token_usage{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "100 * avg(sglang:token_usage{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "token usage %",
           "refId": "B",
           "range": true
@@ -8435,7 +8435,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "100 * avg(sglang:full_token_usage{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "100 * avg(sglang:full_token_usage{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "full token usage %",
           "refId": "C",
           "range": true
@@ -8446,7 +8446,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "100 * avg(sglang:pending_prealloc_token_usage{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "100 * avg(sglang:pending_prealloc_token_usage{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "pending prealloc %",
           "refId": "D",
           "range": true
@@ -8457,7 +8457,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "100 * avg(sglang:swa_token_usage{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "100 * avg(sglang:swa_token_usage{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "SWA usage %",
           "refId": "E",
           "range": true
@@ -8465,7 +8465,7 @@
       ],
       "title": "Token usage ratios",
       "type": "timeseries",
-      "description": "Token usage ratios. Main query: 100 * avg(sglang:cache_hit_rate{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}); 100 * avg(sglang:token_usage{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})"
+      "description": "Token usage ratios. Main query: 100 * avg(sglang:cache_hit_rate{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}); 100 * avg(sglang:token_usage{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})"
     },
     {
       "collapsed": false,
@@ -8571,7 +8571,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(sglang:routing_keys_active{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "sum(sglang:routing_keys_active{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "routing keys active",
           "refId": "A",
           "range": true
@@ -8582,7 +8582,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(sglang:num_unique_running_routing_keys{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "sum(sglang:num_unique_running_routing_keys{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "unique running routing keys",
           "refId": "B",
           "range": true
@@ -8593,7 +8593,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(sglang:routing_key_all_req_count{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval]))",
+          "expr": "sum(rate(sglang:routing_key_all_req_count{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval]))",
           "legendFormat": "routing-key all req/s",
           "refId": "C",
           "range": true
@@ -8604,7 +8604,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(sglang:routing_key_running_req_count{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval]))",
+          "expr": "sum(rate(sglang:routing_key_running_req_count{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval]))",
           "legendFormat": "routing-key running req/s",
           "refId": "D",
           "range": true
@@ -8612,7 +8612,7 @@
       ],
       "title": "Routing keys",
       "type": "timeseries",
-      "description": "Routing keys. Main query: sum(sglang:routing_keys_active{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}); sum(sglang:num_unique_running_routing_keys{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})"
+      "description": "Routing keys. Main query: sum(sglang:routing_keys_active{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}); sum(sglang:num_unique_running_routing_keys{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})"
     },
     {
       "datasource": {
@@ -8705,7 +8705,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "avg(sglang:spec_accept_rate{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "avg(sglang:spec_accept_rate{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "spec accept rate",
           "refId": "A",
           "range": true
@@ -8716,7 +8716,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "avg(sglang:spec_accept_length{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "avg(sglang:spec_accept_length{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "spec accept length",
           "refId": "B",
           "range": true
@@ -8727,7 +8727,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "100 * avg(sglang:new_token_ratio{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "100 * avg(sglang:new_token_ratio{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "new token ratio %",
           "refId": "C",
           "range": true
@@ -8735,7 +8735,7 @@
       ],
       "title": "Speculative decoding",
       "type": "timeseries",
-      "description": "Speculative decoding. Main query: avg(sglang:spec_accept_rate{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}); avg(sglang:spec_accept_length{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})"
+      "description": "Speculative decoding. Main query: avg(sglang:spec_accept_rate{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}); avg(sglang:spec_accept_length{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})"
     },
     {
       "datasource": {
@@ -8828,7 +8828,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "max(sglang:is_cuda_graph{instance=~\"$sglang_instance\"})",
+          "expr": "max(sglang:is_cuda_graph{instance=~\"$sglang_instance\",engine=~\"$engine\"})",
           "legendFormat": "is CUDA graph",
           "refId": "A",
           "range": true
@@ -8839,7 +8839,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(sglang:cuda_graph_passes_total{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval]))",
+          "expr": "sum(rate(sglang:cuda_graph_passes_total{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval]))",
           "legendFormat": "CUDA graph passes/s",
           "refId": "B",
           "range": true
@@ -8850,7 +8850,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "avg(sglang:utilization{instance=~\"$sglang_instance\",model_name=~\"$model_name\"})",
+          "expr": "avg(sglang:utilization{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"})",
           "legendFormat": "utilization",
           "refId": "C",
           "range": true
@@ -8858,7 +8858,7 @@
       ],
       "title": "CUDA graph / utilization",
       "type": "timeseries",
-      "description": "CUDA graph / utilization. Main query: max(sglang:is_cuda_graph{instance=~\"$sglang_instance\"}); sum(rate(sglang:cuda_graph_passes_total{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval]))"
+      "description": "CUDA graph / utilization. Main query: max(sglang:is_cuda_graph{instance=~\"$sglang_instance\",engine=~\"$engine\"}); sum(rate(sglang:cuda_graph_passes_total{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval]))"
     },
     {
       "collapsed": false,
@@ -8964,7 +8964,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.50, sum by (le) (rate(sglang:prompt_tokens_histogram_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(sglang:prompt_tokens_histogram_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])))",
           "legendFormat": "prompt tokens p50",
           "refId": "A",
           "range": true
@@ -8975,7 +8975,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(sglang:prompt_tokens_histogram_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(sglang:prompt_tokens_histogram_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])))",
           "legendFormat": "prompt tokens p95",
           "refId": "B",
           "range": true
@@ -8986,7 +8986,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(sglang:prompt_tokens_histogram_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(sglang:prompt_tokens_histogram_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])))",
           "legendFormat": "prompt tokens p99",
           "refId": "C",
           "range": true
@@ -8997,7 +8997,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(sglang:prompt_tokens_histogram_sum{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])) / clamp_min(sum(rate(sglang:prompt_tokens_histogram_count{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])), 1e-9)",
+          "expr": "sum(rate(sglang:prompt_tokens_histogram_sum{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])) / clamp_min(sum(rate(sglang:prompt_tokens_histogram_count{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])), 1e-9)",
           "legendFormat": "prompt tokens avg",
           "refId": "D",
           "range": true
@@ -9005,7 +9005,7 @@
       ],
       "title": "Prompt tokens distribution quantiles",
       "type": "timeseries",
-      "description": "Prompt tokens distribution quantiles. Main query: histogram_quantile(0.50, sum by (le) (rate(sglang:prompt_tokens_histogram_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval]))); histogram_quantile(0.95, sum by (le) (rate(sglang:prompt_tokens_histogram_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])))"
+      "description": "Prompt tokens distribution quantiles. Main query: histogram_quantile(0.50, sum by (le) (rate(sglang:prompt_tokens_histogram_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval]))); histogram_quantile(0.95, sum by (le) (rate(sglang:prompt_tokens_histogram_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])))"
     },
     {
       "datasource": {
@@ -9098,7 +9098,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.50, sum by (le) (rate(sglang:generation_tokens_histogram_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(sglang:generation_tokens_histogram_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])))",
           "legendFormat": "generation tokens p50",
           "refId": "A",
           "range": true
@@ -9109,7 +9109,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(sglang:generation_tokens_histogram_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(sglang:generation_tokens_histogram_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])))",
           "legendFormat": "generation tokens p95",
           "refId": "B",
           "range": true
@@ -9120,7 +9120,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(sglang:generation_tokens_histogram_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(sglang:generation_tokens_histogram_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])))",
           "legendFormat": "generation tokens p99",
           "refId": "C",
           "range": true
@@ -9131,7 +9131,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(sglang:generation_tokens_histogram_sum{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])) / clamp_min(sum(rate(sglang:generation_tokens_histogram_count{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])), 1e-9)",
+          "expr": "sum(rate(sglang:generation_tokens_histogram_sum{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])) / clamp_min(sum(rate(sglang:generation_tokens_histogram_count{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])), 1e-9)",
           "legendFormat": "generation tokens avg",
           "refId": "D",
           "range": true
@@ -9139,7 +9139,7 @@
       ],
       "title": "Generation tokens distribution quantiles",
       "type": "timeseries",
-      "description": "Generation tokens distribution quantiles. Main query: histogram_quantile(0.50, sum by (le) (rate(sglang:generation_tokens_histogram_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval]))); histogram_quantile(0.95, sum by (le) (rate(sglang:generation_tokens_histogram_bucket{instance=~\"$sglang_instance\",model_name=~\"$model_name\"}[$__rate_interval])))"
+      "description": "Generation tokens distribution quantiles. Main query: histogram_quantile(0.50, sum by (le) (rate(sglang:generation_tokens_histogram_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval]))); histogram_quantile(0.95, sum by (le) (rate(sglang:generation_tokens_histogram_bucket{instance=~\"$sglang_instance\",engine=~\"$engine\",model_name=~\"$model_name\"}[$__rate_interval])))"
     }
   ],
   "preload": false,
@@ -9166,6 +9166,44 @@
           "value": "prometheus"
         },
         "options": []
+      },
+      {
+        "allValue": ".*",
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "definition": "label_values(up{job=\"engine\"}, engine)",
+        "description": "Движок (GATEWAY_ENGINE_ID). Предпочтительный фильтр: то же значение выбирается в дашбордах шлюза, Loki и Tempo, так что машина задаётся один раз. Селекторы instance оставлены как запасной вариант и фильтруют по адресу таргета.",
+        "includeAll": true,
+        "label": "Движок",
+        "multi": true,
+        "name": "engine",
+        "options": [],
+        "query": "label_values(up{job=\"engine\"}, engine)",
+        "refresh": 2,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "definition": "label_values(up{job=\"engine\", engine=~\"$engine\"}, host)",
+        "description": "Машина выбранного движка. Скрыта намеренно: node- и GPU-метрики метку engine не несут, поэтому фильтруются по host, который выводится из engine. allValue здесь не задан сознательно: значение All должно разворачиваться в список хостов выбранного движка, а не в .*, иначе фильтр стал бы пустым.",
+        "includeAll": true,
+        "label": "host",
+        "multi": true,
+        "name": "host",
+        "options": [],
+        "query": "label_values(up{job=\"engine\", engine=~\"$engine\"}, host)",
+        "refresh": 2,
+        "sort": 1,
+        "type": "query",
+        "hide": 2
       },
       {
         "current": {

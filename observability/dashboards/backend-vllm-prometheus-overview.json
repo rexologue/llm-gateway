@@ -33,7 +33,7 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "## ⚠️ Если везде «No Data»\n\nЭто **не значит**, что метрики не экспортируются. Сначала убедитесь, что выбран **правильный Data Source** в переменных дашборда (сверху) — без этого панели не найдут данные. После выбора нажмите Refresh.\n\n---\n\n## Как пользоваться\n\nМетрики inference-бэкенда **vLLM**. Сверху выберите инстанс (`vllm_instance`, `gpu_instance`) в переменных сверху. Секции: очереди и running/waiting запросы, throughput, латентности (TTFT/TPOT), KV-cache, GPU. Наведите курсор на график для деталей.\n"
+        "content": "## ⚠️ Если везде «No Data»\n\nЭто **не значит**, что метрики не экспортируются. Сначала убедитесь, что выбран **правильный Data Source** в переменных дашборда (сверху) — без этого панели не найдут данные. После выбора нажмите Refresh.\n\n---\n\n## Как пользоваться\n\nМетрики inference-бэкенда **vLLM**. Машину выбирайте переменной **Движок** (`engine`) — то же значение работает в остальных дашбордах. `vllm_instance`, `node_instance` и `gpu_instance` оставлены как запасной вариант: они фильтруют по адресу таргета и требуют согласованного выбора всех трёх. Секции: очереди и running/waiting запросы, throughput, латентности (TTFT/TPOT), KV-cache, GPU. Наведите курсор на график для деталей.\n"
       },
       "transparent": false
     },
@@ -114,14 +114,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(vllm:num_requests_running{instance=~\"$vllm_instance\"})",
+          "expr": "sum(vllm:num_requests_running{instance=~\"$vllm_instance\",engine=~\"$engine\"})",
           "legendFormat": "",
           "refId": "A"
         }
       ],
       "title": "Running requests",
       "type": "stat",
-      "description": "Running requests. Main query: sum(vllm:num_requests_running{instance=~\"$vllm_instance\"})"
+      "description": "Running requests. Main query: sum(vllm:num_requests_running{instance=~\"$vllm_instance\",engine=~\"$engine\"})"
     },
     {
       "datasource": {
@@ -187,14 +187,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(vllm:num_requests_waiting{instance=~\"$vllm_instance\"})",
+          "expr": "sum(vllm:num_requests_waiting{instance=~\"$vllm_instance\",engine=~\"$engine\"})",
           "legendFormat": "",
           "refId": "A"
         }
       ],
       "title": "Waiting requests",
       "type": "stat",
-      "description": "Waiting requests. Main query: sum(vllm:num_requests_waiting{instance=~\"$vllm_instance\"})"
+      "description": "Waiting requests. Main query: sum(vllm:num_requests_waiting{instance=~\"$vllm_instance\",engine=~\"$engine\"})"
     },
     {
       "datasource": {
@@ -260,14 +260,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(http_requests_total{instance=~\"$vllm_instance\"}[5m]))",
+          "expr": "sum(rate(http_requests_total{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m]))",
           "legendFormat": "",
           "refId": "A"
         }
       ],
       "title": "HTTP RPS",
       "type": "stat",
-      "description": "HTTP RPS. Main query: sum(rate(http_requests_total{instance=~\"$vllm_instance\"}[5m]))"
+      "description": "HTTP RPS. Main query: sum(rate(http_requests_total{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m]))"
     },
     {
       "datasource": {
@@ -333,14 +333,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(vllm:request_success_total{instance=~\"$vllm_instance\"}[5m]))",
+          "expr": "sum(rate(vllm:request_success_total{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m]))",
           "legendFormat": "",
           "refId": "A"
         }
       ],
       "title": "Completed req/s",
       "type": "stat",
-      "description": "Completed req/s. Main query: sum(rate(vllm:request_success_total{instance=~\"$vllm_instance\"}[5m]))"
+      "description": "Completed req/s. Main query: sum(rate(vllm:request_success_total{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m]))"
     },
     {
       "datasource": {
@@ -406,14 +406,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(vllm:time_to_first_token_seconds_bucket{instance=~\"$vllm_instance\"}[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(vllm:time_to_first_token_seconds_bucket{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])))",
           "legendFormat": "",
           "refId": "A"
         }
       ],
       "title": "TTFT p95",
       "type": "stat",
-      "description": "TTFT p95. Main query: histogram_quantile(0.95, sum by (le) (rate(vllm:time_to_first_token_seconds_bucket{instance=~\"$vllm_instance\"}[5m])))"
+      "description": "TTFT p95. Main query: histogram_quantile(0.95, sum by (le) (rate(vllm:time_to_first_token_seconds_bucket{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])))"
     },
     {
       "datasource": {
@@ -479,14 +479,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(vllm:e2e_request_latency_seconds_bucket{instance=~\"$vllm_instance\"}[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(vllm:e2e_request_latency_seconds_bucket{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])))",
           "legendFormat": "",
           "refId": "A"
         }
       ],
       "title": "E2E p95",
       "type": "stat",
-      "description": "E2E p95. Main query: histogram_quantile(0.95, sum by (le) (rate(vllm:e2e_request_latency_seconds_bucket{instance=~\"$vllm_instance\"}[5m])))"
+      "description": "E2E p95. Main query: histogram_quantile(0.95, sum by (le) (rate(vllm:e2e_request_latency_seconds_bucket{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])))"
     },
     {
       "datasource": {
@@ -552,14 +552,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(vllm:prompt_tokens_total{instance=~\"$vllm_instance\"}[5m]))",
+          "expr": "sum(rate(vllm:prompt_tokens_total{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m]))",
           "legendFormat": "",
           "refId": "A"
         }
       ],
       "title": "Prompt tok/s",
       "type": "stat",
-      "description": "Prompt tok/s. Main query: sum(rate(vllm:prompt_tokens_total{instance=~\"$vllm_instance\"}[5m]))"
+      "description": "Prompt tok/s. Main query: sum(rate(vllm:prompt_tokens_total{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m]))"
     },
     {
       "datasource": {
@@ -625,14 +625,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(vllm:generation_tokens_total{instance=~\"$vllm_instance\"}[5m]))",
+          "expr": "sum(rate(vllm:generation_tokens_total{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m]))",
           "legendFormat": "",
           "refId": "A"
         }
       ],
       "title": "Generation tok/s",
       "type": "stat",
-      "description": "Generation tok/s. Main query: sum(rate(vllm:generation_tokens_total{instance=~\"$vllm_instance\"}[5m]))"
+      "description": "Generation tok/s. Main query: sum(rate(vllm:generation_tokens_total{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m]))"
     },
     {
       "datasource": {
@@ -724,7 +724,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(vllm:num_requests_running{instance=~\"$vllm_instance\"})",
+          "expr": "sum(vllm:num_requests_running{instance=~\"$vllm_instance\",engine=~\"$engine\"})",
           "legendFormat": "running",
           "refId": "A"
         },
@@ -733,14 +733,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(vllm:num_requests_waiting{instance=~\"$vllm_instance\"})",
+          "expr": "sum(vllm:num_requests_waiting{instance=~\"$vllm_instance\",engine=~\"$engine\"})",
           "legendFormat": "waiting",
           "refId": "B"
         }
       ],
       "title": "Concurrency",
       "type": "timeseries",
-      "description": "Concurrency. Main query: sum(vllm:num_requests_running{instance=~\"$vllm_instance\"}); sum(vllm:num_requests_waiting{instance=~\"$vllm_instance\"})"
+      "description": "Concurrency. Main query: sum(vllm:num_requests_running{instance=~\"$vllm_instance\",engine=~\"$engine\"}); sum(vllm:num_requests_waiting{instance=~\"$vllm_instance\",engine=~\"$engine\"})"
     },
     {
       "datasource": {
@@ -832,7 +832,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(http_requests_total{instance=~\"$vllm_instance\"}[5m]))",
+          "expr": "sum(rate(http_requests_total{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m]))",
           "legendFormat": "HTTP RPS",
           "refId": "A"
         },
@@ -841,14 +841,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(vllm:request_success_total{instance=~\"$vllm_instance\"}[5m]))",
+          "expr": "sum(rate(vllm:request_success_total{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m]))",
           "legendFormat": "completed req/s",
           "refId": "B"
         }
       ],
       "title": "Request rate",
       "type": "timeseries",
-      "description": "Request rate. Main query: sum(rate(http_requests_total{instance=~\"$vllm_instance\"}[5m])); sum(rate(vllm:request_success_total{instance=~\"$vllm_instance\"}[5m]))"
+      "description": "Request rate. Main query: sum(rate(http_requests_total{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])); sum(rate(vllm:request_success_total{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m]))"
     },
     {
       "datasource": {
@@ -940,7 +940,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(vllm:prompt_tokens_total{instance=~\"$vllm_instance\"}[5m]))",
+          "expr": "sum(rate(vllm:prompt_tokens_total{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m]))",
           "legendFormat": "prompt tok/s",
           "refId": "A"
         },
@@ -949,7 +949,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(vllm:generation_tokens_total{instance=~\"$vllm_instance\"}[5m]))",
+          "expr": "sum(rate(vllm:generation_tokens_total{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m]))",
           "legendFormat": "generation tok/s",
           "refId": "B"
         },
@@ -958,7 +958,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(vllm:prompt_tokens_cached_total{instance=~\"$vllm_instance\"}[5m]))",
+          "expr": "sum(rate(vllm:prompt_tokens_cached_total{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m]))",
           "legendFormat": "cached prompt tok/s",
           "refId": "C"
         },
@@ -967,14 +967,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(vllm:prompt_tokens_by_source_total{instance=~\"$vllm_instance\",source=\"local_compute\"}[5m]))",
+          "expr": "sum(rate(vllm:prompt_tokens_by_source_total{instance=~\"$vllm_instance\",engine=~\"$engine\",source=\"local_compute\"}[5m]))",
           "legendFormat": "recomputed prompt tok/s",
           "refId": "D"
         }
       ],
       "title": "Token throughput",
       "type": "timeseries",
-      "description": "Token throughput. Main query: sum(rate(vllm:prompt_tokens_total{instance=~\"$vllm_instance\"}[5m])); sum(rate(vllm:generation_tokens_total{instance=~\"$vllm_instance\"}[5m]))"
+      "description": "Token throughput. Main query: sum(rate(vllm:prompt_tokens_total{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])); sum(rate(vllm:generation_tokens_total{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m]))"
     },
     {
       "collapsed": false,
@@ -1079,7 +1079,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.50, sum by (le) (rate(vllm:time_to_first_token_seconds_bucket{instance=~\"$vllm_instance\"}[5m])))",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(vllm:time_to_first_token_seconds_bucket{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])))",
           "legendFormat": "TTFT p50",
           "refId": "A"
         },
@@ -1088,7 +1088,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(vllm:time_to_first_token_seconds_bucket{instance=~\"$vllm_instance\"}[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(vllm:time_to_first_token_seconds_bucket{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])))",
           "legendFormat": "TTFT p95",
           "refId": "B"
         },
@@ -1097,7 +1097,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(vllm:request_queue_time_seconds_bucket{instance=~\"$vllm_instance\"}[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(vllm:request_queue_time_seconds_bucket{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])))",
           "legendFormat": "queue p95",
           "refId": "C"
         },
@@ -1106,7 +1106,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(vllm:request_prefill_time_seconds_bucket{instance=~\"$vllm_instance\"}[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(vllm:request_prefill_time_seconds_bucket{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])))",
           "legendFormat": "prefill p95",
           "refId": "D"
         },
@@ -1115,7 +1115,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(vllm:request_decode_time_seconds_bucket{instance=~\"$vllm_instance\"}[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(vllm:request_decode_time_seconds_bucket{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])))",
           "legendFormat": "decode p95",
           "refId": "E"
         },
@@ -1124,14 +1124,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(vllm:e2e_request_latency_seconds_bucket{instance=~\"$vllm_instance\"}[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(vllm:e2e_request_latency_seconds_bucket{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])))",
           "legendFormat": "E2E p95",
           "refId": "F"
         }
       ],
       "title": "Core latency p50/p95",
       "type": "timeseries",
-      "description": "Core latency p50/p95. Main query: histogram_quantile(0.50, sum by (le) (rate(vllm:time_to_first_token_seconds_bucket{instance=~\"$vllm_instance\"}[5m]))); histogram_quantile(0.95, sum by (le) (rate(vllm:time_to_first_token_seconds_bucket{instance=~\"$vllm_instance\"}[5m])))"
+      "description": "Core latency p50/p95. Main query: histogram_quantile(0.50, sum by (le) (rate(vllm:time_to_first_token_seconds_bucket{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m]))); histogram_quantile(0.95, sum by (le) (rate(vllm:time_to_first_token_seconds_bucket{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])))"
     },
     {
       "datasource": {
@@ -1223,7 +1223,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.50, sum by (le) (rate(vllm:request_time_per_output_token_seconds_bucket{instance=~\"$vllm_instance\"}[5m])))",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(vllm:request_time_per_output_token_seconds_bucket{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])))",
           "legendFormat": "time/output tok p50",
           "refId": "A"
         },
@@ -1232,7 +1232,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(vllm:request_time_per_output_token_seconds_bucket{instance=~\"$vllm_instance\"}[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(vllm:request_time_per_output_token_seconds_bucket{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])))",
           "legendFormat": "time/output tok p95",
           "refId": "B"
         },
@@ -1241,7 +1241,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.50, sum by (le) (rate(vllm:inter_token_latency_seconds_bucket{instance=~\"$vllm_instance\"}[5m])))",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(vllm:inter_token_latency_seconds_bucket{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])))",
           "legendFormat": "inter-token p50",
           "refId": "C"
         },
@@ -1250,14 +1250,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(vllm:inter_token_latency_seconds_bucket{instance=~\"$vllm_instance\"}[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(vllm:inter_token_latency_seconds_bucket{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])))",
           "legendFormat": "inter-token p95",
           "refId": "D"
         }
       ],
       "title": "Per-token latency",
       "type": "timeseries",
-      "description": "Per-token latency. Main query: histogram_quantile(0.50, sum by (le) (rate(vllm:request_time_per_output_token_seconds_bucket{instance=~\"$vllm_instance\"}[5m]))); histogram_quantile(0.95, sum by (le) (rate(vllm:request_time_per_output_token_seconds_bucket{instance=~\"$vllm_instance\"}[5m])))"
+      "description": "Per-token latency. Main query: histogram_quantile(0.50, sum by (le) (rate(vllm:request_time_per_output_token_seconds_bucket{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m]))); histogram_quantile(0.95, sum by (le) (rate(vllm:request_time_per_output_token_seconds_bucket{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])))"
     },
     {
       "datasource": {
@@ -1349,7 +1349,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(vllm:request_prompt_tokens_sum{instance=~\"$vllm_instance\"}[5m])) / clamp_min(sum(rate(vllm:request_prompt_tokens_count{instance=~\"$vllm_instance\"}[5m])), 1e-9)",
+          "expr": "sum(rate(vllm:request_prompt_tokens_sum{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])) / clamp_min(sum(rate(vllm:request_prompt_tokens_count{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])), 1e-9)",
           "legendFormat": "avg prompt tokens",
           "refId": "A"
         },
@@ -1358,7 +1358,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(vllm:request_generation_tokens_sum{instance=~\"$vllm_instance\"}[5m])) / clamp_min(sum(rate(vllm:request_generation_tokens_count{instance=~\"$vllm_instance\"}[5m])), 1e-9)",
+          "expr": "sum(rate(vllm:request_generation_tokens_sum{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])) / clamp_min(sum(rate(vllm:request_generation_tokens_count{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])), 1e-9)",
           "legendFormat": "avg output tokens",
           "refId": "B"
         },
@@ -1367,7 +1367,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(vllm:request_params_max_tokens_sum{instance=~\"$vllm_instance\"}[5m])) / clamp_min(sum(rate(vllm:request_params_max_tokens_count{instance=~\"$vllm_instance\"}[5m])), 1e-9)",
+          "expr": "sum(rate(vllm:request_params_max_tokens_sum{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])) / clamp_min(sum(rate(vllm:request_params_max_tokens_count{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])), 1e-9)",
           "legendFormat": "avg requested max_tokens",
           "refId": "C"
         },
@@ -1376,14 +1376,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(vllm:request_prefill_kv_computed_tokens_sum{instance=~\"$vllm_instance\"}[5m])) / clamp_min(sum(rate(vllm:request_prefill_kv_computed_tokens_count{instance=~\"$vllm_instance\"}[5m])), 1e-9)",
+          "expr": "sum(rate(vllm:request_prefill_kv_computed_tokens_sum{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])) / clamp_min(sum(rate(vllm:request_prefill_kv_computed_tokens_count{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])), 1e-9)",
           "legendFormat": "avg computed prefill tokens",
           "refId": "D"
         }
       ],
       "title": "Average request size",
       "type": "timeseries",
-      "description": "Average request size. Main query: sum(rate(vllm:request_prompt_tokens_sum{instance=~\"$vllm_instance\"}[5m])) / clamp_min(sum(rate(vllm:request_prompt_tokens_count{instance=~\"$vllm_instance\"}[5m])), 1e-9); sum(rate(vllm:request_generation_tokens_sum{instance=~\"$vllm_instance\"}[5m])) / clamp_min(sum(rate(vllm:request_generation_tokens_count{instance=~\"$vllm_instance\"}[5m])), 1e-9)"
+      "description": "Average request size. Main query: sum(rate(vllm:request_prompt_tokens_sum{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])) / clamp_min(sum(rate(vllm:request_prompt_tokens_count{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])), 1e-9); sum(rate(vllm:request_generation_tokens_sum{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])) / clamp_min(sum(rate(vllm:request_generation_tokens_count{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])), 1e-9)"
     },
     {
       "datasource": {
@@ -1475,7 +1475,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "100 * sum(rate(vllm:prefix_cache_hits_total{instance=~\"$vllm_instance\"}[5m])) / clamp_min(sum(rate(vllm:prefix_cache_queries_total{instance=~\"$vllm_instance\"}[5m])), 1e-9)",
+          "expr": "100 * sum(rate(vllm:prefix_cache_hits_total{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])) / clamp_min(sum(rate(vllm:prefix_cache_queries_total{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])), 1e-9)",
           "legendFormat": "prefix cache hit %",
           "refId": "A"
         },
@@ -1484,7 +1484,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "100 * sum(rate(vllm:external_prefix_cache_hits_total{instance=~\"$vllm_instance\"}[5m])) / clamp_min(sum(rate(vllm:external_prefix_cache_queries_total{instance=~\"$vllm_instance\"}[5m])), 1e-9)",
+          "expr": "100 * sum(rate(vllm:external_prefix_cache_hits_total{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])) / clamp_min(sum(rate(vllm:external_prefix_cache_queries_total{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])), 1e-9)",
           "legendFormat": "external prefix hit %",
           "refId": "B"
         },
@@ -1493,7 +1493,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "100 * sum(rate(vllm:mm_cache_hits_total{instance=~\"$vllm_instance\"}[5m])) / clamp_min(sum(rate(vllm:mm_cache_queries_total{instance=~\"$vllm_instance\"}[5m])), 1e-9)",
+          "expr": "100 * sum(rate(vllm:mm_cache_hits_total{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])) / clamp_min(sum(rate(vllm:mm_cache_queries_total{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])), 1e-9)",
           "legendFormat": "mm cache hit %",
           "refId": "C"
         },
@@ -1502,14 +1502,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "avg(vllm:kv_cache_usage_perc{instance=~\"$vllm_instance\"})",
+          "expr": "avg(vllm:kv_cache_usage_perc{instance=~\"$vllm_instance\",engine=~\"$engine\"})",
           "legendFormat": "KV cache %",
           "refId": "D"
         }
       ],
       "title": "Cache hit ratio and scheduler pressure",
       "type": "timeseries",
-      "description": "Cache hit ratio and scheduler pressure. Main query: 100 * sum(rate(vllm:prefix_cache_hits_total{instance=~\"$vllm_instance\"}[5m])) / clamp_min(sum(rate(vllm:prefix_cache_queries_total{instance=~\"$vllm_instance\"}[5m])), 1e-9); 100 * sum(rate(vllm:external_prefix_cache_hits_total{instance=~\"$vllm_instance\"}[5m])) / clamp_min(sum(rate(vllm:external_prefix_cache_queries_total{instance=~\"$vllm_instance\"}[5m])), 1e-9)"
+      "description": "Cache hit ratio and scheduler pressure. Main query: 100 * sum(rate(vllm:prefix_cache_hits_total{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])) / clamp_min(sum(rate(vllm:prefix_cache_queries_total{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])), 1e-9); 100 * sum(rate(vllm:external_prefix_cache_hits_total{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])) / clamp_min(sum(rate(vllm:external_prefix_cache_queries_total{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])), 1e-9)"
     },
     {
       "datasource": {
@@ -1601,14 +1601,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(vllm:num_preemptions_total{instance=~\"$vllm_instance\"}[5m]))",
+          "expr": "sum(rate(vllm:num_preemptions_total{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m]))",
           "legendFormat": "preemptions/s",
           "refId": "A"
         }
       ],
       "title": "Preemptions",
       "type": "timeseries",
-      "description": "Preemptions. Main query: sum(rate(vllm:num_preemptions_total{instance=~\"$vllm_instance\"}[5m]))"
+      "description": "Preemptions. Main query: sum(rate(vllm:num_preemptions_total{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m]))"
     },
     {
       "collapsed": false,
@@ -1713,14 +1713,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "avg by (gpu) (DCGM_FI_DEV_GPU_UTIL{instance=~\"$gpu_instance\"})",
+          "expr": "avg by (gpu) (DCGM_FI_DEV_GPU_UTIL{instance=~\"$gpu_instance\",host=~\"$host\"})",
           "legendFormat": "GPU {{gpu}}",
           "refId": "A"
         }
       ],
       "title": "GPU utilization by GPU",
       "type": "timeseries",
-      "description": "GPU utilization by GPU. Main query: avg by (gpu) (DCGM_FI_DEV_GPU_UTIL{instance=~\"$gpu_instance\"})"
+      "description": "GPU utilization by GPU. Main query: avg by (gpu) (DCGM_FI_DEV_GPU_UTIL{instance=~\"$gpu_instance\",host=~\"$host\"})"
     },
     {
       "datasource": {
@@ -1812,7 +1812,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\"}",
+          "expr": "DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\",host=~\"$host\"}",
           "legendFormat": "GPU {{gpu}} used",
           "refId": "A"
         },
@@ -1821,14 +1821,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "DCGM_FI_DEV_FB_FREE{instance=~\"$gpu_instance\"}",
+          "expr": "DCGM_FI_DEV_FB_FREE{instance=~\"$gpu_instance\",host=~\"$host\"}",
           "legendFormat": "GPU {{gpu}} free",
           "refId": "B"
         }
       ],
       "title": "GPU memory used by GPU",
       "type": "timeseries",
-      "description": "GPU memory used by GPU. Main query: DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\"}; DCGM_FI_DEV_FB_FREE{instance=~\"$gpu_instance\"}"
+      "description": "GPU memory used by GPU. Main query: DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\",host=~\"$host\"}; DCGM_FI_DEV_FB_FREE{instance=~\"$gpu_instance\",host=~\"$host\"}"
     },
     {
       "datasource": {
@@ -1920,14 +1920,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "DCGM_FI_DEV_GPU_TEMP{instance=~\"$gpu_instance\"}",
+          "expr": "DCGM_FI_DEV_GPU_TEMP{instance=~\"$gpu_instance\",host=~\"$host\"}",
           "legendFormat": "GPU {{gpu}}",
           "refId": "A"
         }
       ],
       "title": "GPU temperature by GPU",
       "type": "timeseries",
-      "description": "GPU temperature by GPU. Main query: DCGM_FI_DEV_GPU_TEMP{instance=~\"$gpu_instance\"}"
+      "description": "GPU temperature by GPU. Main query: DCGM_FI_DEV_GPU_TEMP{instance=~\"$gpu_instance\",host=~\"$host\"}"
     },
     {
       "datasource": {
@@ -2019,14 +2019,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "DCGM_FI_DEV_POWER_USAGE{instance=~\"$gpu_instance\"}",
+          "expr": "DCGM_FI_DEV_POWER_USAGE{instance=~\"$gpu_instance\",host=~\"$host\"}",
           "legendFormat": "GPU {{gpu}}",
           "refId": "A"
         }
       ],
       "title": "GPU power by GPU",
       "type": "timeseries",
-      "description": "GPU power by GPU. Main query: DCGM_FI_DEV_POWER_USAGE{instance=~\"$gpu_instance\"}"
+      "description": "GPU power by GPU. Main query: DCGM_FI_DEV_POWER_USAGE{instance=~\"$gpu_instance\",host=~\"$host\"}"
     },
     {
       "datasource": {
@@ -2094,14 +2094,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "avg(DCGM_FI_DEV_GPU_UTIL{instance=~\"$gpu_instance\"})",
+          "expr": "avg(DCGM_FI_DEV_GPU_UTIL{instance=~\"$gpu_instance\",host=~\"$host\"})",
           "legendFormat": "",
           "refId": "A"
         }
       ],
       "title": "GPU util avg",
       "type": "stat",
-      "description": "GPU util avg. Main query: avg(DCGM_FI_DEV_GPU_UTIL{instance=~\"$gpu_instance\"})"
+      "description": "GPU util avg. Main query: avg(DCGM_FI_DEV_GPU_UTIL{instance=~\"$gpu_instance\",host=~\"$host\"})"
     },
     {
       "datasource": {
@@ -2169,14 +2169,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "100 * sum(DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\"}) / clamp_min(sum(DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\"} + DCGM_FI_DEV_FB_FREE{instance=~\"$gpu_instance\"}), 1e-9)",
+          "expr": "100 * sum(DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\",host=~\"$host\"}) / clamp_min(sum(DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\",host=~\"$host\"} + DCGM_FI_DEV_FB_FREE{instance=~\"$gpu_instance\",host=~\"$host\"}), 1e-9)",
           "legendFormat": "",
           "refId": "A"
         }
       ],
       "title": "GPU mem util avg",
       "type": "stat",
-      "description": "GPU mem util avg. Main query: 100 * sum(DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\"}) / clamp_min(sum(DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\"} + DCGM_FI_DEV_FB_FREE{instance=~\"$gpu_instance\"}), 1e-9)"
+      "description": "GPU mem util avg. Main query: 100 * sum(DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\",host=~\"$host\"}) / clamp_min(sum(DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\",host=~\"$host\"} + DCGM_FI_DEV_FB_FREE{instance=~\"$gpu_instance\",host=~\"$host\"}), 1e-9)"
     },
     {
       "datasource": {
@@ -2238,14 +2238,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(DCGM_FI_DEV_XID_ERRORS{instance=~\"$gpu_instance\"})",
+          "expr": "sum(DCGM_FI_DEV_XID_ERRORS{instance=~\"$gpu_instance\",host=~\"$host\"})",
           "legendFormat": "",
           "refId": "A"
         }
       ],
       "title": "XID errors",
       "type": "stat",
-      "description": "XID errors. Main query: sum(DCGM_FI_DEV_XID_ERRORS{instance=~\"$gpu_instance\"})"
+      "description": "XID errors. Main query: sum(DCGM_FI_DEV_XID_ERRORS{instance=~\"$gpu_instance\",host=~\"$host\"})"
     },
     {
       "datasource": {
@@ -2307,14 +2307,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(DCGM_FI_DEV_ROW_REMAP_FAILURE{instance=~\"$gpu_instance\"})",
+          "expr": "sum(DCGM_FI_DEV_ROW_REMAP_FAILURE{instance=~\"$gpu_instance\",host=~\"$host\"})",
           "legendFormat": "",
           "refId": "A"
         }
       ],
       "title": "Row remap failures",
       "type": "stat",
-      "description": "Row remap failures. Main query: sum(DCGM_FI_DEV_ROW_REMAP_FAILURE{instance=~\"$gpu_instance\"})"
+      "description": "Row remap failures. Main query: sum(DCGM_FI_DEV_ROW_REMAP_FAILURE{instance=~\"$gpu_instance\",host=~\"$host\"})"
     },
     {
       "datasource": {
@@ -2380,14 +2380,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(DCGM_FI_DEV_CORRECTABLE_REMAPPED_ROWS{instance=~\"$gpu_instance\"})",
+          "expr": "sum(DCGM_FI_DEV_CORRECTABLE_REMAPPED_ROWS{instance=~\"$gpu_instance\",host=~\"$host\"})",
           "legendFormat": "",
           "refId": "A"
         }
       ],
       "title": "Correctable remapped rows",
       "type": "stat",
-      "description": "Correctable remapped rows. Main query: sum(DCGM_FI_DEV_CORRECTABLE_REMAPPED_ROWS{instance=~\"$gpu_instance\"})"
+      "description": "Correctable remapped rows. Main query: sum(DCGM_FI_DEV_CORRECTABLE_REMAPPED_ROWS{instance=~\"$gpu_instance\",host=~\"$host\"})"
     },
     {
       "datasource": {
@@ -2449,14 +2449,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(DCGM_FI_DEV_UNCORRECTABLE_REMAPPED_ROWS{instance=~\"$gpu_instance\"})",
+          "expr": "sum(DCGM_FI_DEV_UNCORRECTABLE_REMAPPED_ROWS{instance=~\"$gpu_instance\",host=~\"$host\"})",
           "legendFormat": "",
           "refId": "A"
         }
       ],
       "title": "Uncorrectable remapped rows",
       "type": "stat",
-      "description": "Uncorrectable remapped rows. Main query: sum(DCGM_FI_DEV_UNCORRECTABLE_REMAPPED_ROWS{instance=~\"$gpu_instance\"})"
+      "description": "Uncorrectable remapped rows. Main query: sum(DCGM_FI_DEV_UNCORRECTABLE_REMAPPED_ROWS{instance=~\"$gpu_instance\",host=~\"$host\"})"
     },
     {
       "datasource": {
@@ -2518,14 +2518,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(vllm:estimated_flops_per_gpu_total{instance=~\"$vllm_instance\"}[5m]))",
+          "expr": "sum(rate(vllm:estimated_flops_per_gpu_total{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m]))",
           "legendFormat": "",
           "refId": "A"
         }
       ],
       "title": "Estimated FLOPs/s",
       "type": "stat",
-      "description": "Estimated FLOPs/s. Main query: sum(rate(vllm:estimated_flops_per_gpu_total{instance=~\"$vllm_instance\"}[5m]))"
+      "description": "Estimated FLOPs/s. Main query: sum(rate(vllm:estimated_flops_per_gpu_total{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m]))"
     },
     {
       "datasource": {
@@ -2587,14 +2587,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(vllm:estimated_read_bytes_per_gpu_total{instance=~\"$vllm_instance\"}[5m])) + sum(rate(vllm:estimated_write_bytes_per_gpu_total{instance=~\"$vllm_instance\"}[5m]))",
+          "expr": "sum(rate(vllm:estimated_read_bytes_per_gpu_total{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])) + sum(rate(vllm:estimated_write_bytes_per_gpu_total{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m]))",
           "legendFormat": "",
           "refId": "A"
         }
       ],
       "title": "Est. GPU BW B/s",
       "type": "stat",
-      "description": "Est. GPU BW B/s. Main query: sum(rate(vllm:estimated_read_bytes_per_gpu_total{instance=~\"$vllm_instance\"}[5m])) + sum(rate(vllm:estimated_write_bytes_per_gpu_total{instance=~\"$vllm_instance\"}[5m]))"
+      "description": "Est. GPU BW B/s. Main query: sum(rate(vllm:estimated_read_bytes_per_gpu_total{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])) + sum(rate(vllm:estimated_write_bytes_per_gpu_total{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m]))"
     },
     {
       "collapsed": false,
@@ -2699,14 +2699,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "100 * (1 - avg(rate(node_cpu_seconds_total{instance=~\"$node_instance\",mode=\"idle\"}[5m])))",
+          "expr": "100 * (1 - avg(rate(node_cpu_seconds_total{instance=~\"$node_instance\",host=~\"$host\",mode=\"idle\"}[5m])))",
           "legendFormat": "CPU busy %",
           "refId": "A"
         }
       ],
       "title": "Host CPU busy %",
       "type": "timeseries",
-      "description": "Host CPU busy %. Main query: 100 * (1 - avg(rate(node_cpu_seconds_total{instance=~\"$node_instance\",mode=\"idle\"}[5m])))"
+      "description": "Host CPU busy %. Main query: 100 * (1 - avg(rate(node_cpu_seconds_total{instance=~\"$node_instance\",host=~\"$host\",mode=\"idle\"}[5m])))"
     },
     {
       "datasource": {
@@ -2798,7 +2798,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "node_load1{instance=~\"$node_instance\"}",
+          "expr": "node_load1{instance=~\"$node_instance\",host=~\"$host\"}",
           "legendFormat": "load1",
           "refId": "A"
         },
@@ -2807,7 +2807,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "node_load5{instance=~\"$node_instance\"}",
+          "expr": "node_load5{instance=~\"$node_instance\",host=~\"$host\"}",
           "legendFormat": "load5",
           "refId": "B"
         },
@@ -2816,14 +2816,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "node_load15{instance=~\"$node_instance\"}",
+          "expr": "node_load15{instance=~\"$node_instance\",host=~\"$host\"}",
           "legendFormat": "load15",
           "refId": "C"
         }
       ],
       "title": "Host load",
       "type": "timeseries",
-      "description": "Host load. Main query: node_load1{instance=~\"$node_instance\"}; node_load5{instance=~\"$node_instance\"}"
+      "description": "Host load. Main query: node_load1{instance=~\"$node_instance\",host=~\"$host\"}; node_load5{instance=~\"$node_instance\",host=~\"$host\"}"
     },
     {
       "datasource": {
@@ -2915,14 +2915,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "100 * (1 - node_memory_MemAvailable_bytes{instance=~\"$node_instance\"} / node_memory_MemTotal_bytes{instance=~\"$node_instance\"})",
+          "expr": "100 * (1 - node_memory_MemAvailable_bytes{instance=~\"$node_instance\",host=~\"$host\"} / node_memory_MemTotal_bytes{instance=~\"$node_instance\",host=~\"$host\"})",
           "legendFormat": "RAM used %",
           "refId": "A"
         }
       ],
       "title": "Host RAM usage %",
       "type": "timeseries",
-      "description": "Host RAM usage %. Main query: 100 * (1 - node_memory_MemAvailable_bytes{instance=~\"$node_instance\"} / node_memory_MemTotal_bytes{instance=~\"$node_instance\"})"
+      "description": "Host RAM usage %. Main query: 100 * (1 - node_memory_MemAvailable_bytes{instance=~\"$node_instance\",host=~\"$host\"} / node_memory_MemTotal_bytes{instance=~\"$node_instance\",host=~\"$host\"})"
     },
     {
       "datasource": {
@@ -3014,14 +3014,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "100 * (1 - node_memory_SwapFree_bytes{instance=~\"$node_instance\"} / clamp_min(node_memory_SwapTotal_bytes{instance=~\"$node_instance\"}, 1))",
+          "expr": "100 * (1 - node_memory_SwapFree_bytes{instance=~\"$node_instance\",host=~\"$host\"} / clamp_min(node_memory_SwapTotal_bytes{instance=~\"$node_instance\",host=~\"$host\"}, 1))",
           "legendFormat": "swap used %",
           "refId": "A"
         }
       ],
       "title": "Host swap usage %",
       "type": "timeseries",
-      "description": "Host swap usage %. Main query: 100 * (1 - node_memory_SwapFree_bytes{instance=~\"$node_instance\"} / clamp_min(node_memory_SwapTotal_bytes{instance=~\"$node_instance\"}, 1))"
+      "description": "Host swap usage %. Main query: 100 * (1 - node_memory_SwapFree_bytes{instance=~\"$node_instance\",host=~\"$host\"} / clamp_min(node_memory_SwapTotal_bytes{instance=~\"$node_instance\",host=~\"$host\"}, 1))"
     },
     {
       "datasource": {
@@ -3114,7 +3114,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "100 * rate(process_cpu_seconds_total{instance=~\"$vllm_instance\"}[5m])",
+          "expr": "100 * rate(process_cpu_seconds_total{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])",
           "legendFormat": "process CPU % of one core",
           "refId": "A"
         }
@@ -3212,7 +3212,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "process_resident_memory_bytes{instance=~\"$vllm_instance\"}",
+          "expr": "process_resident_memory_bytes{instance=~\"$vllm_instance\",engine=~\"$engine\"}",
           "legendFormat": "RSS",
           "refId": "A"
         },
@@ -3221,14 +3221,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "process_virtual_memory_bytes{instance=~\"$vllm_instance\"}",
+          "expr": "process_virtual_memory_bytes{instance=~\"$vllm_instance\",engine=~\"$engine\"}",
           "legendFormat": "VSZ",
           "refId": "B"
         }
       ],
       "title": "vLLM process memory",
       "type": "timeseries",
-      "description": "vLLM process memory. Main query: process_resident_memory_bytes{instance=~\"$vllm_instance\"}; process_virtual_memory_bytes{instance=~\"$vllm_instance\"}"
+      "description": "vLLM process memory. Main query: process_resident_memory_bytes{instance=~\"$vllm_instance\",engine=~\"$engine\"}; process_virtual_memory_bytes{instance=~\"$vllm_instance\",engine=~\"$engine\"}"
     },
     {
       "datasource": {
@@ -3320,7 +3320,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "process_open_fds{instance=~\"$vllm_instance\"}",
+          "expr": "process_open_fds{instance=~\"$vllm_instance\",engine=~\"$engine\"}",
           "legendFormat": "open FDs",
           "refId": "A"
         },
@@ -3329,14 +3329,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "process_max_fds{instance=~\"$vllm_instance\"}",
+          "expr": "process_max_fds{instance=~\"$vllm_instance\",engine=~\"$engine\"}",
           "legendFormat": "max FDs",
           "refId": "B"
         }
       ],
       "title": "vLLM process file descriptors",
       "type": "timeseries",
-      "description": "vLLM process file descriptors. Main query: process_open_fds{instance=~\"$vllm_instance\"}; process_max_fds{instance=~\"$vllm_instance\"}"
+      "description": "vLLM process file descriptors. Main query: process_open_fds{instance=~\"$vllm_instance\",engine=~\"$engine\"}; process_max_fds{instance=~\"$vllm_instance\",engine=~\"$engine\"}"
     },
     {
       "datasource": {
@@ -3428,14 +3428,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "100 * (1 - node_filesystem_avail_bytes{instance=~\"$node_instance\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"} / node_filesystem_size_bytes{instance=~\"$node_instance\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"})",
+          "expr": "100 * (1 - node_filesystem_avail_bytes{instance=~\"$node_instance\",host=~\"$host\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"} / node_filesystem_size_bytes{instance=~\"$node_instance\",host=~\"$host\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"})",
           "legendFormat": "{{mountpoint}}",
           "refId": "A"
         }
       ],
       "title": "Filesystem usage % by mountpoint",
       "type": "timeseries",
-      "description": "Filesystem usage % by mountpoint. Main query: 100 * (1 - node_filesystem_avail_bytes{instance=~\"$node_instance\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"} / node_filesystem_size_bytes{instance=~\"$node_instance\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"})"
+      "description": "Filesystem usage % by mountpoint. Main query: 100 * (1 - node_filesystem_avail_bytes{instance=~\"$node_instance\",host=~\"$host\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"} / node_filesystem_size_bytes{instance=~\"$node_instance\",host=~\"$host\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"})"
     },
     {
       "datasource": {
@@ -3527,7 +3527,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(node_disk_read_bytes_total{instance=~\"$node_instance\",device!~\"loop.*|ram.*\"}[5m]))",
+          "expr": "sum(rate(node_disk_read_bytes_total{instance=~\"$node_instance\",host=~\"$host\",device!~\"loop.*|ram.*\"}[5m]))",
           "legendFormat": "read B/s",
           "refId": "A"
         },
@@ -3536,14 +3536,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(node_disk_written_bytes_total{instance=~\"$node_instance\",device!~\"loop.*|ram.*\"}[5m]))",
+          "expr": "sum(rate(node_disk_written_bytes_total{instance=~\"$node_instance\",host=~\"$host\",device!~\"loop.*|ram.*\"}[5m]))",
           "legendFormat": "write B/s",
           "refId": "B"
         }
       ],
       "title": "Disk throughput",
       "type": "timeseries",
-      "description": "Disk throughput. Main query: sum(rate(node_disk_read_bytes_total{instance=~\"$node_instance\",device!~\"loop.*|ram.*\"}[5m])); sum(rate(node_disk_written_bytes_total{instance=~\"$node_instance\",device!~\"loop.*|ram.*\"}[5m]))"
+      "description": "Disk throughput. Main query: sum(rate(node_disk_read_bytes_total{instance=~\"$node_instance\",host=~\"$host\",device!~\"loop.*|ram.*\"}[5m])); sum(rate(node_disk_written_bytes_total{instance=~\"$node_instance\",host=~\"$host\",device!~\"loop.*|ram.*\"}[5m]))"
     },
     {
       "datasource": {
@@ -3635,7 +3635,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(node_pressure_cpu_waiting_seconds_total{instance=~\"$node_instance\"}[5m]))",
+          "expr": "sum(rate(node_pressure_cpu_waiting_seconds_total{instance=~\"$node_instance\",host=~\"$host\"}[5m]))",
           "legendFormat": "CPU waiting/s",
           "refId": "A"
         },
@@ -3644,7 +3644,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(node_pressure_io_waiting_seconds_total{instance=~\"$node_instance\"}[5m]))",
+          "expr": "sum(rate(node_pressure_io_waiting_seconds_total{instance=~\"$node_instance\",host=~\"$host\"}[5m]))",
           "legendFormat": "IO waiting/s",
           "refId": "B"
         },
@@ -3653,14 +3653,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(node_pressure_memory_waiting_seconds_total{instance=~\"$node_instance\"}[5m]))",
+          "expr": "sum(rate(node_pressure_memory_waiting_seconds_total{instance=~\"$node_instance\",host=~\"$host\"}[5m]))",
           "legendFormat": "memory waiting/s",
           "refId": "C"
         }
       ],
       "title": "Pressure stall indicators",
       "type": "timeseries",
-      "description": "Pressure stall indicators. Main query: sum(rate(node_pressure_cpu_waiting_seconds_total{instance=~\"$node_instance\"}[5m])); sum(rate(node_pressure_io_waiting_seconds_total{instance=~\"$node_instance\"}[5m]))"
+      "description": "Pressure stall indicators. Main query: sum(rate(node_pressure_cpu_waiting_seconds_total{instance=~\"$node_instance\",host=~\"$host\"}[5m])); sum(rate(node_pressure_io_waiting_seconds_total{instance=~\"$node_instance\",host=~\"$host\"}[5m]))"
     },
     {
       "datasource": {
@@ -3752,7 +3752,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "node_netstat_Tcp_CurrEstab{instance=~\"$node_instance\"}",
+          "expr": "node_netstat_Tcp_CurrEstab{instance=~\"$node_instance\",host=~\"$host\"}",
           "legendFormat": "TCP established",
           "refId": "A"
         },
@@ -3761,7 +3761,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(node_netstat_TcpExt_ListenDrops{instance=~\"$node_instance\"}[5m]))",
+          "expr": "sum(rate(node_netstat_TcpExt_ListenDrops{instance=~\"$node_instance\",host=~\"$host\"}[5m]))",
           "legendFormat": "listen drops/s",
           "refId": "B"
         },
@@ -3770,7 +3770,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(node_netstat_TcpExt_ListenOverflows{instance=~\"$node_instance\"}[5m]))",
+          "expr": "sum(rate(node_netstat_TcpExt_ListenOverflows{instance=~\"$node_instance\",host=~\"$host\"}[5m]))",
           "legendFormat": "listen overflows/s",
           "refId": "C"
         },
@@ -3779,14 +3779,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(node_netstat_Tcp_RetransSegs{instance=~\"$node_instance\"}[5m]))",
+          "expr": "sum(rate(node_netstat_Tcp_RetransSegs{instance=~\"$node_instance\",host=~\"$host\"}[5m]))",
           "legendFormat": "TCP retrans/s",
           "refId": "D"
         }
       ],
       "title": "TCP backlog / retransmit signals",
       "type": "timeseries",
-      "description": "TCP backlog / retransmit signals. Main query: node_netstat_Tcp_CurrEstab{instance=~\"$node_instance\"}; sum(rate(node_netstat_TcpExt_ListenDrops{instance=~\"$node_instance\"}[5m]))"
+      "description": "TCP backlog / retransmit signals. Main query: node_netstat_Tcp_CurrEstab{instance=~\"$node_instance\",host=~\"$host\"}; sum(rate(node_netstat_TcpExt_ListenDrops{instance=~\"$node_instance\",host=~\"$host\"}[5m]))"
     },
     {
       "datasource": {
@@ -3880,7 +3880,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "100 * (1 - irate(node_cpu_seconds_total{instance=~\"$node_instance\",mode=\"idle\"}[10s]))",
+          "expr": "100 * (1 - irate(node_cpu_seconds_total{instance=~\"$node_instance\",host=~\"$host\",mode=\"idle\"}[10s]))",
           "legendFormat": "cpu{{cpu}}",
           "range": true,
           "refId": "A"
@@ -3888,7 +3888,7 @@
       ],
       "title": "Per vCPU load",
       "type": "timeseries",
-      "description": "Per vCPU load. Main query: 100 * (1 - irate(node_cpu_seconds_total{instance=~\"$node_instance\",mode=\"idle\"}[10s]))"
+      "description": "Per vCPU load. Main query: 100 * (1 - irate(node_cpu_seconds_total{instance=~\"$node_instance\",host=~\"$host\",mode=\"idle\"}[10s]))"
     },
     {
       "collapsed": true,
@@ -4436,14 +4436,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "max(up{instance=~\"$vllm_instance\"})",
+          "expr": "max(up{instance=~\"$vllm_instance\",engine=~\"$engine\"})",
           "legendFormat": "",
           "refId": "A"
         }
       ],
       "title": "vLLM target up",
       "type": "stat",
-      "description": "vLLM target up. Main query: max(up{instance=~\"$vllm_instance\"})"
+      "description": "vLLM target up. Main query: max(up{instance=~\"$vllm_instance\",engine=~\"$engine\"})"
     },
     {
       "datasource": {
@@ -4505,14 +4505,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "max(up{instance=~\"$node_instance\"})",
+          "expr": "max(up{instance=~\"$node_instance\",host=~\"$host\"})",
           "legendFormat": "",
           "refId": "A"
         }
       ],
       "title": "Node exporter up",
       "type": "stat",
-      "description": "Node exporter up. Main query: max(up{instance=~\"$node_instance\"})"
+      "description": "Node exporter up. Main query: max(up{instance=~\"$node_instance\",host=~\"$host\"})"
     },
     {
       "datasource": {
@@ -4574,14 +4574,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "max(up{instance=~\"$gpu_instance\"})",
+          "expr": "max(up{instance=~\"$gpu_instance\",host=~\"$host\"})",
           "legendFormat": "",
           "refId": "A"
         }
       ],
       "title": "DCGM exporter up",
       "type": "stat",
-      "description": "DCGM exporter up. Main query: max(up{instance=~\"$gpu_instance\"})"
+      "description": "DCGM exporter up. Main query: max(up{instance=~\"$gpu_instance\",host=~\"$host\"})"
     },
     {
       "datasource": {
@@ -4643,14 +4643,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "max(vllm:engine_sleep_state{instance=~\"$vllm_instance\"})",
+          "expr": "max(vllm:engine_sleep_state{instance=~\"$vllm_instance\",engine=~\"$engine\"})",
           "legendFormat": "",
           "refId": "A"
         }
       ],
       "title": "vLLM engine sleep state",
       "type": "stat",
-      "description": "vLLM engine sleep state. Main query: max(vllm:engine_sleep_state{instance=~\"$vllm_instance\"})"
+      "description": "vLLM engine sleep state. Main query: max(vllm:engine_sleep_state{instance=~\"$vllm_instance\",engine=~\"$engine\"})"
     },
     {
       "datasource": {
@@ -4716,14 +4716,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "max(scrape_duration_seconds{instance=~\"$vllm_instance\"})",
+          "expr": "max(scrape_duration_seconds{instance=~\"$vllm_instance\",engine=~\"$engine\"})",
           "legendFormat": "",
           "refId": "A"
         }
       ],
       "title": "Scrape duration (vLLM)",
       "type": "stat",
-      "description": "Scrape duration (vLLM). Main query: max(scrape_duration_seconds{instance=~\"$vllm_instance\"})"
+      "description": "Scrape duration (vLLM). Main query: max(scrape_duration_seconds{instance=~\"$vllm_instance\",engine=~\"$engine\"})"
     },
     {
       "datasource": {
@@ -4789,14 +4789,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "max(scrape_samples_scraped{instance=~\"$vllm_instance\"})",
+          "expr": "max(scrape_samples_scraped{instance=~\"$vllm_instance\",engine=~\"$engine\"})",
           "legendFormat": "",
           "refId": "A"
         }
       ],
       "title": "Scraped samples (vLLM)",
       "type": "stat",
-      "description": "Scraped samples (vLLM). Main query: max(scrape_samples_scraped{instance=~\"$vllm_instance\"})"
+      "description": "Scraped samples (vLLM). Main query: max(scrape_samples_scraped{instance=~\"$vllm_instance\",engine=~\"$engine\"})"
     },
     {
       "datasource": {
@@ -4862,14 +4862,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "max(promhttp_metric_handler_requests_in_flight{instance=~\"$vllm_instance\"})",
+          "expr": "max(promhttp_metric_handler_requests_in_flight{instance=~\"$vllm_instance\",engine=~\"$engine\"})",
           "legendFormat": "",
           "refId": "A"
         }
       ],
       "title": "Prom handler in-flight",
       "type": "stat",
-      "description": "Prom handler in-flight. Main query: max(promhttp_metric_handler_requests_in_flight{instance=~\"$vllm_instance\"})"
+      "description": "Prom handler in-flight. Main query: max(promhttp_metric_handler_requests_in_flight{instance=~\"$vllm_instance\",engine=~\"$engine\"})"
     },
     {
       "datasource": {
@@ -4935,14 +4935,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "max(go_goroutines{instance=~\"$node_instance\"})",
+          "expr": "max(go_goroutines{instance=~\"$node_instance\",host=~\"$host\"})",
           "legendFormat": "",
           "refId": "A"
         }
       ],
       "title": "Go goroutines",
       "type": "stat",
-      "description": "Go goroutines. Main query: max(go_goroutines{instance=~\"$node_instance\"})"
+      "description": "Go goroutines. Main query: max(go_goroutines{instance=~\"$node_instance\",host=~\"$host\"})"
     },
     {
       "collapsed": false,
@@ -5017,14 +5017,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(node_sockstat_sockets_used{instance=~\"$node_instance\"})",
+          "expr": "sum(node_sockstat_sockets_used{instance=~\"$node_instance\",host=~\"$host\"})",
           "legendFormat": "__auto",
           "refId": "A"
         }
       ],
       "title": "Sockets current",
       "type": "stat",
-      "description": "Sockets current. Main query: sum(node_sockstat_sockets_used{instance=~\"$node_instance\"})"
+      "description": "Sockets current. Main query: sum(node_sockstat_sockets_used{instance=~\"$node_instance\",host=~\"$host\"})"
     },
     {
       "datasource": {
@@ -5087,7 +5087,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "max_over_time((sum(node_sockstat_sockets_used{instance=~\"$node_instance\"}))[$__range:])",
+          "expr": "max_over_time((sum(node_sockstat_sockets_used{instance=~\"$node_instance\",host=~\"$host\"}))[$__range:])",
           "legendFormat": "__auto",
           "refId": "A"
         }
@@ -5155,14 +5155,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(process_open_fds{instance=~\"$vllm_instance\"})",
+          "expr": "sum(process_open_fds{instance=~\"$vllm_instance\",engine=~\"$engine\"})",
           "legendFormat": "__auto",
           "refId": "A"
         }
       ],
       "title": "Open FDs current",
       "type": "stat",
-      "description": "Open FDs current. Main query: sum(process_open_fds{instance=~\"$vllm_instance\"})"
+      "description": "Open FDs current. Main query: sum(process_open_fds{instance=~\"$vllm_instance\",engine=~\"$engine\"})"
     },
     {
       "datasource": {
@@ -5225,7 +5225,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "max_over_time((sum(process_open_fds{instance=~\"$vllm_instance\"}))[$__range:])",
+          "expr": "max_over_time((sum(process_open_fds{instance=~\"$vllm_instance\",engine=~\"$engine\"}))[$__range:])",
           "legendFormat": "__auto",
           "refId": "A"
         }
@@ -5293,14 +5293,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(vllm:time_to_first_token_seconds_bucket{instance=~\"$vllm_instance\"}[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(vllm:time_to_first_token_seconds_bucket{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])))",
           "legendFormat": "__auto",
           "refId": "A"
         }
       ],
       "title": "TTFT p95 current",
       "type": "stat",
-      "description": "TTFT p95 current. Main query: histogram_quantile(0.95, sum by (le) (rate(vllm:time_to_first_token_seconds_bucket{instance=~\"$vllm_instance\"}[5m])))"
+      "description": "TTFT p95 current. Main query: histogram_quantile(0.95, sum by (le) (rate(vllm:time_to_first_token_seconds_bucket{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])))"
     },
     {
       "datasource": {
@@ -5363,7 +5363,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "max_over_time((histogram_quantile(0.95, sum by (le) (rate(vllm:time_to_first_token_seconds_bucket{instance=~\"$vllm_instance\"}[5m]))))[$__range:])",
+          "expr": "max_over_time((histogram_quantile(0.95, sum by (le) (rate(vllm:time_to_first_token_seconds_bucket{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m]))))[$__range:])",
           "legendFormat": "__auto",
           "refId": "A"
         }
@@ -5431,14 +5431,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(vllm:e2e_request_latency_seconds_bucket{instance=~\"$vllm_instance\"}[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(vllm:e2e_request_latency_seconds_bucket{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])))",
           "legendFormat": "__auto",
           "refId": "A"
         }
       ],
       "title": "E2E p95 current",
       "type": "stat",
-      "description": "E2E p95 current. Main query: histogram_quantile(0.95, sum by (le) (rate(vllm:e2e_request_latency_seconds_bucket{instance=~\"$vllm_instance\"}[5m])))"
+      "description": "E2E p95 current. Main query: histogram_quantile(0.95, sum by (le) (rate(vllm:e2e_request_latency_seconds_bucket{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m])))"
     },
     {
       "datasource": {
@@ -5501,7 +5501,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "max_over_time((histogram_quantile(0.95, sum by (le) (rate(vllm:e2e_request_latency_seconds_bucket{instance=~\"$vllm_instance\"}[5m]))))[$__range:])",
+          "expr": "max_over_time((histogram_quantile(0.95, sum by (le) (rate(vllm:e2e_request_latency_seconds_bucket{instance=~\"$vllm_instance\",engine=~\"$engine\"}[5m]))))[$__range:])",
           "legendFormat": "__auto",
           "refId": "A"
         }
@@ -5571,14 +5571,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "100 * (1 - avg(rate(node_cpu_seconds_total{instance=~\"$node_instance\",mode=\"idle\"}[5m])))",
+          "expr": "100 * (1 - avg(rate(node_cpu_seconds_total{instance=~\"$node_instance\",host=~\"$host\",mode=\"idle\"}[5m])))",
           "legendFormat": "__auto",
           "refId": "A"
         }
       ],
       "title": "CPU busy current",
       "type": "stat",
-      "description": "CPU busy current. Main query: 100 * (1 - avg(rate(node_cpu_seconds_total{instance=~\"$node_instance\",mode=\"idle\"}[5m])))"
+      "description": "CPU busy current. Main query: 100 * (1 - avg(rate(node_cpu_seconds_total{instance=~\"$node_instance\",host=~\"$host\",mode=\"idle\"}[5m])))"
     },
     {
       "datasource": {
@@ -5643,7 +5643,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "max_over_time((100 * (1 - avg(rate(node_cpu_seconds_total{instance=~\"$node_instance\",mode=\"idle\"}[5m]))))[$__range:])",
+          "expr": "max_over_time((100 * (1 - avg(rate(node_cpu_seconds_total{instance=~\"$node_instance\",host=~\"$host\",mode=\"idle\"}[5m]))))[$__range:])",
           "legendFormat": "__auto",
           "refId": "A"
         }
@@ -5713,14 +5713,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "100 * (1 - sum(node_memory_MemAvailable_bytes{instance=~\"$node_instance\"}) / clamp_min(sum(node_memory_MemTotal_bytes{instance=~\"$node_instance\"}), 1))",
+          "expr": "100 * (1 - sum(node_memory_MemAvailable_bytes{instance=~\"$node_instance\",host=~\"$host\"}) / clamp_min(sum(node_memory_MemTotal_bytes{instance=~\"$node_instance\",host=~\"$host\"}), 1))",
           "legendFormat": "__auto",
           "refId": "A"
         }
       ],
       "title": "RAM used current",
       "type": "stat",
-      "description": "RAM used current. Main query: 100 * (1 - sum(node_memory_MemAvailable_bytes{instance=~\"$node_instance\"}) / clamp_min(sum(node_memory_MemTotal_bytes{instance=~\"$node_instance\"}), 1))"
+      "description": "RAM used current. Main query: 100 * (1 - sum(node_memory_MemAvailable_bytes{instance=~\"$node_instance\",host=~\"$host\"}) / clamp_min(sum(node_memory_MemTotal_bytes{instance=~\"$node_instance\",host=~\"$host\"}), 1))"
     },
     {
       "datasource": {
@@ -5785,7 +5785,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "max_over_time((100 * (1 - sum(node_memory_MemAvailable_bytes{instance=~\"$node_instance\"}) / clamp_min(sum(node_memory_MemTotal_bytes{instance=~\"$node_instance\"}), 1)))[$__range:])",
+          "expr": "max_over_time((100 * (1 - sum(node_memory_MemAvailable_bytes{instance=~\"$node_instance\",host=~\"$host\"}) / clamp_min(sum(node_memory_MemTotal_bytes{instance=~\"$node_instance\",host=~\"$host\"}), 1)))[$__range:])",
           "legendFormat": "__auto",
           "refId": "A"
         }
@@ -5855,14 +5855,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "avg(DCGM_FI_DEV_GPU_UTIL{instance=~\"$gpu_instance\"})",
+          "expr": "avg(DCGM_FI_DEV_GPU_UTIL{instance=~\"$gpu_instance\",host=~\"$host\"})",
           "legendFormat": "__auto",
           "refId": "A"
         }
       ],
       "title": "GPU util current",
       "type": "stat",
-      "description": "GPU util current. Main query: avg(DCGM_FI_DEV_GPU_UTIL{instance=~\"$gpu_instance\"})"
+      "description": "GPU util current. Main query: avg(DCGM_FI_DEV_GPU_UTIL{instance=~\"$gpu_instance\",host=~\"$host\"})"
     },
     {
       "datasource": {
@@ -5927,7 +5927,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "max_over_time((avg(DCGM_FI_DEV_GPU_UTIL{instance=~\"$gpu_instance\"}))[$__range:])",
+          "expr": "max_over_time((avg(DCGM_FI_DEV_GPU_UTIL{instance=~\"$gpu_instance\",host=~\"$host\"}))[$__range:])",
           "legendFormat": "__auto",
           "refId": "A"
         }
@@ -5997,14 +5997,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "100 * sum(DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\"}) / clamp_min(sum(DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\"} + DCGM_FI_DEV_FB_FREE{instance=~\"$gpu_instance\"}), 1e-9)",
+          "expr": "100 * sum(DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\",host=~\"$host\"}) / clamp_min(sum(DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\",host=~\"$host\"} + DCGM_FI_DEV_FB_FREE{instance=~\"$gpu_instance\",host=~\"$host\"}), 1e-9)",
           "legendFormat": "__auto",
           "refId": "A"
         }
       ],
       "title": "GPU mem current",
       "type": "stat",
-      "description": "GPU mem current. Main query: 100 * sum(DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\"}) / clamp_min(sum(DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\"} + DCGM_FI_DEV_FB_FREE{instance=~\"$gpu_instance\"}), 1e-9)"
+      "description": "GPU mem current. Main query: 100 * sum(DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\",host=~\"$host\"}) / clamp_min(sum(DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\",host=~\"$host\"} + DCGM_FI_DEV_FB_FREE{instance=~\"$gpu_instance\",host=~\"$host\"}), 1e-9)"
     },
     {
       "datasource": {
@@ -6069,7 +6069,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "max_over_time((100 * sum(DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\"}) / clamp_min(sum(DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\"} + DCGM_FI_DEV_FB_FREE{instance=~\"$gpu_instance\"}), 1e-9))[$__range:])",
+          "expr": "max_over_time((100 * sum(DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\",host=~\"$host\"}) / clamp_min(sum(DCGM_FI_DEV_FB_USED{instance=~\"$gpu_instance\",host=~\"$host\"} + DCGM_FI_DEV_FB_FREE{instance=~\"$gpu_instance\",host=~\"$host\"}), 1e-9))[$__range:])",
           "legendFormat": "__auto",
           "refId": "A"
         }
@@ -6137,14 +6137,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(node_disk_read_bytes_total{instance=~\"$node_instance\",device!~\"loop.*|ram.*\"}[5m]))",
+          "expr": "sum(rate(node_disk_read_bytes_total{instance=~\"$node_instance\",host=~\"$host\",device!~\"loop.*|ram.*\"}[5m]))",
           "legendFormat": "__auto",
           "refId": "A"
         }
       ],
       "title": "Disk read current",
       "type": "stat",
-      "description": "Disk read current. Main query: sum(rate(node_disk_read_bytes_total{instance=~\"$node_instance\",device!~\"loop.*|ram.*\"}[5m]))"
+      "description": "Disk read current. Main query: sum(rate(node_disk_read_bytes_total{instance=~\"$node_instance\",host=~\"$host\",device!~\"loop.*|ram.*\"}[5m]))"
     },
     {
       "datasource": {
@@ -6207,7 +6207,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "max_over_time((sum(rate(node_disk_read_bytes_total{instance=~\"$node_instance\",device!~\"loop.*|ram.*\"}[5m])))[$__range:])",
+          "expr": "max_over_time((sum(rate(node_disk_read_bytes_total{instance=~\"$node_instance\",host=~\"$host\",device!~\"loop.*|ram.*\"}[5m])))[$__range:])",
           "legendFormat": "__auto",
           "refId": "A"
         }
@@ -6275,14 +6275,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(node_disk_written_bytes_total{instance=~\"$node_instance\",device!~\"loop.*|ram.*\"}[5m]))",
+          "expr": "sum(rate(node_disk_written_bytes_total{instance=~\"$node_instance\",host=~\"$host\",device!~\"loop.*|ram.*\"}[5m]))",
           "legendFormat": "__auto",
           "refId": "A"
         }
       ],
       "title": "Disk write current",
       "type": "stat",
-      "description": "Disk write current. Main query: sum(rate(node_disk_written_bytes_total{instance=~\"$node_instance\",device!~\"loop.*|ram.*\"}[5m]))"
+      "description": "Disk write current. Main query: sum(rate(node_disk_written_bytes_total{instance=~\"$node_instance\",host=~\"$host\",device!~\"loop.*|ram.*\"}[5m]))"
     },
     {
       "datasource": {
@@ -6345,7 +6345,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "max_over_time((sum(rate(node_disk_written_bytes_total{instance=~\"$node_instance\",device!~\"loop.*|ram.*\"}[5m])))[$__range:])",
+          "expr": "max_over_time((sum(rate(node_disk_written_bytes_total{instance=~\"$node_instance\",host=~\"$host\",device!~\"loop.*|ram.*\"}[5m])))[$__range:])",
           "legendFormat": "__auto",
           "refId": "A"
         }
@@ -6427,7 +6427,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(node_filesystem_size_bytes{instance=~\"$node_instance\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"} - node_filesystem_avail_bytes{instance=~\"$node_instance\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"})",
+          "expr": "sum(node_filesystem_size_bytes{instance=~\"$node_instance\",host=~\"$host\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"} - node_filesystem_avail_bytes{instance=~\"$node_instance\",host=~\"$host\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"})",
           "legendFormat": "__auto",
           "refId": "A"
         }
@@ -6496,7 +6496,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(node_filesystem_avail_bytes{instance=~\"$node_instance\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"})",
+          "expr": "sum(node_filesystem_avail_bytes{instance=~\"$node_instance\",host=~\"$host\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"})",
           "legendFormat": "__auto",
           "refId": "A"
         }
@@ -6567,7 +6567,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "100 * sum(node_filesystem_size_bytes{instance=~\"$node_instance\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"} - node_filesystem_avail_bytes{instance=~\"$node_instance\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"}) / clamp_min(sum(node_filesystem_size_bytes{instance=~\"$node_instance\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"}), 1)",
+          "expr": "100 * sum(node_filesystem_size_bytes{instance=~\"$node_instance\",host=~\"$host\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"} - node_filesystem_avail_bytes{instance=~\"$node_instance\",host=~\"$host\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"}) / clamp_min(sum(node_filesystem_size_bytes{instance=~\"$node_instance\",host=~\"$host\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"}), 1)",
           "legendFormat": "__auto",
           "refId": "A"
         }
@@ -6636,7 +6636,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(node_netstat_Tcp_CurrEstab{instance=~\"$node_instance\"})",
+          "expr": "sum(node_netstat_Tcp_CurrEstab{instance=~\"$node_instance\",host=~\"$host\"})",
           "legendFormat": "__auto",
           "refId": "A"
         }
@@ -6735,7 +6735,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (instance) (node_filesystem_size_bytes{instance=~\"$node_instance\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"} - node_filesystem_avail_bytes{instance=~\"$node_instance\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"})",
+          "expr": "sum by (instance) (node_filesystem_size_bytes{instance=~\"$node_instance\",host=~\"$host\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"} - node_filesystem_avail_bytes{instance=~\"$node_instance\",host=~\"$host\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"})",
           "legendFormat": "{{instance}} used",
           "refId": "A"
         }
@@ -6834,7 +6834,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "100 * sum by (instance) (node_filesystem_size_bytes{instance=~\"$node_instance\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"} - node_filesystem_avail_bytes{instance=~\"$node_instance\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"}) / clamp_min(sum by (instance) (node_filesystem_size_bytes{instance=~\"$node_instance\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"}), 1)",
+          "expr": "100 * sum by (instance) (node_filesystem_size_bytes{instance=~\"$node_instance\",host=~\"$host\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"} - node_filesystem_avail_bytes{instance=~\"$node_instance\",host=~\"$host\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"}) / clamp_min(sum by (instance) (node_filesystem_size_bytes{instance=~\"$node_instance\",host=~\"$host\",fstype!~\"tmpfs|overlay|squashfs|ramfs|nsfs\",mountpoint!~\"/run.*|/var/lib/docker/.+\"}), 1)",
           "legendFormat": "{{instance}} %",
           "refId": "A"
         }
@@ -6867,6 +6867,44 @@
           "value": "prometheus"
         },
         "options": []
+      },
+      {
+        "allValue": ".*",
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "definition": "label_values(up{job=\"engine\"}, engine)",
+        "description": "Движок (GATEWAY_ENGINE_ID). Предпочтительный фильтр: то же значение выбирается в дашбордах шлюза, Loki и Tempo, так что машина задаётся один раз. Селекторы instance оставлены как запасной вариант и фильтруют по адресу таргета.",
+        "includeAll": true,
+        "label": "Движок",
+        "multi": true,
+        "name": "engine",
+        "options": [],
+        "query": "label_values(up{job=\"engine\"}, engine)",
+        "refresh": 2,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "definition": "label_values(up{job=\"engine\", engine=~\"$engine\"}, host)",
+        "description": "Машина выбранного движка. Скрыта намеренно: node- и GPU-метрики метку engine не несут, поэтому фильтруются по host, который выводится из engine. allValue здесь не задан сознательно: значение All должно разворачиваться в список хостов выбранного движка, а не в .*, иначе фильтр стал бы пустым.",
+        "includeAll": true,
+        "label": "host",
+        "multi": true,
+        "name": "host",
+        "options": [],
+        "query": "label_values(up{job=\"engine\", engine=~\"$engine\"}, host)",
+        "refresh": 2,
+        "sort": 1,
+        "type": "query",
+        "hide": 2
       },
       {
         "current": {
