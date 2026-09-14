@@ -62,6 +62,7 @@ services:
       - --path.rootfs=/host
       - --path.procfs=/host/proc
       - --path.sysfs=/host/sys
+      - "--web.listen-address=:${LLM_NODE_EXPORTER_PORT}"
 
     volumes:
       - /:/host:ro,rslave
