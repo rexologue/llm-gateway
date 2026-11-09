@@ -66,15 +66,19 @@ push, её отказ только считается в метриках; вы�
 
 ```bash
 cp deploy/observability/.env.example deploy/observability/.env
+cp deploy/observability/configs/prometheus.example.yaml deploy/observability/configs/prometheus.yaml
+cp deploy/observability/configs/valkey.example.conf deploy/observability/configs/valkey.conf
 # отредактируйте deploy/observability/.env: OBSERVABILITY_HOST должен быть
-# адресом, доступным машинам с движками
+# адресом, доступным машинам с движками; в valkey.conf замените requirepass
 
 cp deploy/llm/.env.example deploy/llm/.env
-# отредактируйте deploy/llm/.env
+cp deploy/llm/serve_vllm.example.sh deploy/llm/serve_vllm.sh
+cp deploy/llm/serve_sglang.example.sh deploy/llm/serve_sglang.sh
+# отредактируйте deploy/llm/.env и скрипт запуска выбранного бэкенда
 
 cp deploy/gateway/.env.example deploy/gateway/.env
 # отредактируйте deploy/gateway/.env: обязательно GATEWAY_ENGINE_ID и адреса
-# центральной машины
+# центральной машины; пароль Valkey — в GATEWAY_VALKEY_URL
 ```
 
 Поднимите центральный стек — один раз, на выбранной машине:

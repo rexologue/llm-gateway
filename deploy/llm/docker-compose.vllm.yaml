@@ -20,6 +20,7 @@ services:
 
     volumes:
       - ${LLM_VLLM_MODEL_PATH}:/model:ro
+      - ${LLM_VLLM_ADAPTER_MODEL_PATH:-/dev/null}:/adapter_model:ro
       - ./serve_vllm.sh:/serve_vllm.sh:ro
 
     networks:

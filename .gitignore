@@ -1436,6 +1436,9 @@ erl_crash.dump
 deploy/llm/*.sh
 !deploy/llm/serve_sglang.example.sh
 !deploy/llm/serve_vllm.example.sh
+deploy/observability/configs/prometheus.yaml
+deploy/observability/configs/valkey.conf
+deploy/volumes/
 
 .local/
 .codex

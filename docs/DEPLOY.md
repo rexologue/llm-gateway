@@ -66,11 +66,20 @@ Tempo собирают события и трассы всех движков в
 
 ```bash
 cp deploy/llm/.env.example deploy/llm/.env
+cp deploy/llm/serve_vllm.example.sh deploy/llm/serve_vllm.sh
+cp deploy/llm/serve_sglang.example.sh deploy/llm/serve_sglang.sh
 ```
+
+Compose-файлы от машины к машине не меняются: всё локальное задаётся в `.env`,
+скриптах запуска и конфигах, а их рабочие копии в git не попадают.
 
 Затем отредактируйте `deploy/llm/.env`:
 
 - укажите локальный путь к модели;
+- если нужен LoRA-адаптер vLLM, укажите его директорию в
+  `LLM_VLLM_ADAPTER_MODEL_PATH` (она монтируется в `/adapter_model`) и включите
+  `ENABLE_LORA`/`LORA_MODULES` в `serve_vllm.sh`; пустое значение — адаптера
+  нет, на его место монтируется `/dev/null`;
 - выберите теги образов;
 - оставьте `LLM_HOST=127.0.0.1` и `LLM_HTTP_PORT=9900`, если не хотите
   публиковать API бэкенда иначе.
@@ -100,7 +109,7 @@ docker compose --env-file .env -f docker-compose.sglang.yaml --profile test run 
 - Node exporter: `http://127.0.0.1:9100/metrics`
 - DCGM exporter: `http://127.0.0.1:9400/metrics`
 
-Скрипты запуска:
+Скрипты запуска (локальные копии `*.example.sh`):
 
 - `deploy/llm/serve_vllm.sh`
 - `deploy/llm/serve_sglang.sh`
@@ -120,7 +129,10 @@ docker compose --env-file .env -f docker-compose.sglang.yaml --profile test run 
 
 ```bash
 cp deploy/observability/.env.example deploy/observability/.env
-# отредактируйте OBSERVABILITY_HOST: адрес, доступный машинам с движками
+cp deploy/observability/configs/prometheus.example.yaml deploy/observability/configs/prometheus.yaml
+cp deploy/observability/configs/valkey.example.conf deploy/observability/configs/valkey.conf
+# отредактируйте OBSERVABILITY_HOST: адрес, доступный машинам с движками,
+# и замените requirepass в configs/valkey.conf
 cd deploy/observability
 docker compose --env-file .env -f docker-compose.yaml up -d
 ```
@@ -153,9 +165,13 @@ curl -XPOST http://127.0.0.1:9091/-/reload
 
 Ни один из этих сервисов по умолчанию не аутентифицирует клиентов. Держите их в
 приватной сети и задайте `requirepass` в `configs/valkey.conf`: в Valkey лежат
-полные тексты диалогов и вызовы инструментов.
+полные тексты диалогов и вызовы инструментов. Тот же пароль шлюзы передают в
+`GATEWAY_VALKEY_URL` (`redis://:пароль@хост:6379`); проще всего взять пароль
+только из букв и цифр (`openssl rand -hex 32`), чтобы его не пришлось
+кодировать в URL.
 
-Конфигурации:
+Конфигурации (`prometheus.yaml` и `valkey.conf` — локальные копии
+`*.example.*`, в git не попадают):
 
 - Prometheus: `deploy/observability/configs/prometheus.yaml`
 - Loki: `deploy/observability/configs/loki-config.yaml`
@@ -206,7 +222,7 @@ cp deploy/gateway/.env.example deploy/gateway/.env
 Затем отредактируйте `deploy/gateway/.env`:
 
 - задайте `GATEWAY_ENGINE_ID`;
-- укажите адрес центральной машины в `GATEWAY_VALKEY_URL`,
+- укажите адрес центральной машины (и пароль Valkey) в `GATEWAY_VALKEY_URL`,
   `GATEWAY_LOKI_PUSH_URL` и `GATEWAY_OTEL_EXPORTER_OTLP_ENDPOINT`;
 - проверьте `GATEWAY_BACKEND_BASE_URL` и `GATEWAY_HTTP_PORT`.
 

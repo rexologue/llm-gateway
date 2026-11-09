@@ -161,8 +161,9 @@ ENABLE_LORA="0"
 
 LORA_MODULES=()
 # Список LoRA adapters в формате, который понимает vLLM.
+# Compose монтирует LLM_VLLM_ADAPTER_MODEL_PATH из .env в /adapter_model.
 # Пример:
-#   LORA_MODULES=("adapter_name=/path/to/adapter")
+#   LORA_MODULES=("adapter_name=/adapter_model")
 # Для нескольких adapters добавь несколько элементов массива.
 
 MAX_LORAS="1"
