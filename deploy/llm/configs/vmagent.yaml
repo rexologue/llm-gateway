@@ -1,0 +1,34 @@
+# What llm-vmagent scrapes and pushes to the central VictoriaMetrics.
+#
+# The same file on every machine: both targets are local, and everything
+# machine-specific comes from the environment through %{...} placeholders,
+# which vmagent substitutes when it loads the file:
+#   HOST_ID            - LLM_HOST_ID, the machine
+#   NODE_EXPORTER_PORT - LLM_NODE_EXPORTER_PORT
+#
+# Node and GPU metrics belong to the machine, not to any one engine on it, so
+# they carry `host` only. `instance` is set to the machine name because the
+# scrape addresses are the same on every machine and the dashboards pick nodes
+# and GPUs by `instance`.
+
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  # Host metrics: node-exporter runs in the host network namespace.
+  - job_name: node
+    static_configs:
+      - targets: ["host.docker.internal:%{NODE_EXPORTER_PORT}"]
+        labels: {host: "%{HOST_ID}"}
+    relabel_configs:
+      - target_label: instance
+        replacement: "%{HOST_ID}"
+
+  # GPU metrics: dcgm-exporter, reached over the compose network.
+  - job_name: gpu
+    static_configs:
+      - targets: ["llm-dcgm-exporter:9400"]
+        labels: {host: "%{HOST_ID}"}
+    relabel_configs:
+      - target_label: instance
+        replacement: "%{HOST_ID}"

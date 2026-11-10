@@ -30,9 +30,7 @@ services:
 
   llm-smoke-tests:
     profiles: ["test"]
-    build:
-      context: ../..
-      dockerfile: deploy/tests/Dockerfile
+    image: ${LLM_SMOKE_TESTS_IMAGE}
 
     depends_on:
       sglang:
@@ -64,6 +62,7 @@ services:
       - --path.rootfs=/host
       - --path.procfs=/host/proc
       - --path.sysfs=/host/sys
+      - "--web.listen-address=:${LLM_NODE_EXPORTER_PORT}"
 
     volumes:
       - /:/host:ro,rslave
@@ -75,10 +74,42 @@ services:
     restart: unless-stopped
     runtime: nvidia
 
-    # Published on the host because the Prometheus that scrapes it now lives in
-    # the central observability stack, on another machine.
-    ports:
-      - "${LLM_HOST}:${LLM_DCGM_EXPORTER_PORT}:9400"
+    networks:
+      - llm
+
+
+  # Pushes this machine's node and GPU metrics to the central VictoriaMetrics,
+  # so the central side never needs this machine's address. One per machine,
+  # like node-exporter: the engine's own metrics travel with its gateway
+  # (deploy/gateway, gateway-vmagent). While the central side is down it
+  # buffers in memory and then drops samples, never blocking a scrape.
+  llm-vmagent:
+    image: ${LLM_VMAGENT_IMAGE}
+    container_name: ${LLM_VMAGENT_CONTAINER_NAME}
+    restart: unless-stopped
+
+    command:
+      - "-promscrape.config=/etc/vmagent/scrape.yaml"
+      - "-remoteWrite.url=${LLM_METRICS_PUSH_URL}"
+      - "-remoteWrite.disableOnDiskQueue"
+      - "-remoteWrite.dropSamplesOnOverload"
+      # Written to only on graceful shutdown; RAM, so nothing lands on disk.
+      - "-remoteWrite.tmpDataPath=/vmagent-data"
+      - "-httpListenAddr=:8429"
+
+    environment:
+      HOST_ID: ${LLM_HOST_ID}
+      NODE_EXPORTER_PORT: ${LLM_NODE_EXPORTER_PORT}
+
+    # node-exporter runs in the host network namespace; this reaches it there.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    volumes:
+      - ./configs/vmagent.yaml:/etc/vmagent/scrape.yaml:ro
+
+    tmpfs:
+      - /vmagent-data:size=64m
 
     networks:
       - llm

@@ -1,0 +1,37 @@
+# What gateway-vmagent scrapes and pushes to the central VictoriaMetrics.
+#
+# The same file on every machine: the only target is this stack's own gateway,
+# reached by its compose service name, and everything machine-specific comes
+# from the environment through %{...} placeholders, which vmagent substitutes
+# when it loads the file:
+#   ENGINE_ID - GATEWAY_ENGINE_ID, one engine process behind one gateway
+#   HOST_ID   - GATEWAY_HOST_ID, the machine
+#
+# Job names and labels are the ones the dashboards filter on. `instance` is set
+# to the engine id because the scrape address, llm-gateway:8080, is the same on
+# every machine and would tell the engines apart no more than a constant.
+
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  # The gateway's own metrics.
+  - job_name: gateway
+    metrics_path: /gateway/metrics
+    static_configs:
+      - targets: ["llm-gateway:8080"]
+        labels: {engine: "%{ENGINE_ID}", host: "%{HOST_ID}"}
+    relabel_configs:
+      - target_label: instance
+        replacement: "%{ENGINE_ID}"
+
+  # Engine metrics, proxied verbatim by the gateway on /metrics, so they carry
+  # the same engine/host labels as the gateway's own.
+  - job_name: engine
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["llm-gateway:8080"]
+        labels: {engine: "%{ENGINE_ID}", host: "%{HOST_ID}"}
+    relabel_configs:
+      - target_label: instance
+        replacement: "%{ENGINE_ID}"

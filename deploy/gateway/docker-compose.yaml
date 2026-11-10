@@ -5,12 +5,13 @@
 # addressed from .env by IP. That is deliberate - the gateway must keep proxying
 # when the observability stack is down or absent, so nothing here waits on it.
 # Pushes are dropped, Valkey calls trip a breaker, and chat completions carry on.
+#
+# Nothing here is built: the images are named in .env and built beforehand by
+# deploy/build_images.sh, which also pins their tag there.
 
 services:
   llm-gateway:
-    build:
-      context: ../../gateway
-
+    image: ${GATEWAY_IMAGE}
     container_name: ${GATEWAY_CONTAINER_NAME}
     restart: unless-stopped
 
@@ -40,11 +41,45 @@ services:
       - gateway
 
 
+  # Pushes this gateway's metrics to the central VictoriaMetrics - the same
+  # push model as logs and traces, so the central side never needs to know this
+  # machine's address. It scrapes only its own gateway, over the compose
+  # network. Neither side waits on the other: the gateway does not depend on
+  # it, and while the central side is down it buffers in memory and then drops
+  # samples, never blocking a scrape.
+  gateway-vmagent:
+    image: ${GATEWAY_VMAGENT_IMAGE}
+    container_name: ${GATEWAY_VMAGENT_CONTAINER_NAME}
+    restart: unless-stopped
+
+    command:
+      - "-promscrape.config=/etc/vmagent/scrape.yaml"
+      - "-remoteWrite.url=${GATEWAY_METRICS_PUSH_URL}"
+      - "-remoteWrite.disableOnDiskQueue"
+      - "-remoteWrite.dropSamplesOnOverload"
+      # Written to only on graceful shutdown; RAM, so nothing lands on disk.
+      - "-remoteWrite.tmpDataPath=/vmagent-data"
+      - "-httpListenAddr=:8429"
+
+    # Only what the scrape config substitutes, not the whole .env: the gateway's
+    # Valkey password has no business in this container.
+    environment:
+      ENGINE_ID: ${GATEWAY_ENGINE_ID}
+      HOST_ID: ${GATEWAY_HOST_ID}
+
+    volumes:
+      - ./configs/vmagent.yaml:/etc/vmagent/scrape.yaml:ro
+
+    tmpfs:
+      - /vmagent-data:size=64m
+
+    networks:
+      - gateway
+
+
   gateway-smoke-tests:
     profiles: ["test"]
-    build:
-      context: ../..
-      dockerfile: deploy/tests/Dockerfile
+    image: ${GATEWAY_SMOKE_TESTS_IMAGE}
 
     depends_on:
       llm-gateway:

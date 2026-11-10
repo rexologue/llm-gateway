@@ -21,17 +21,18 @@ OpenAI-совместимый API `/v1/*`. Шлюз намеренно не пр
 
 Шлюз предоставляет два отдельных эндпоинта метрик: `/gateway/metrics` — для
 собственных Prometheus-метрик шлюза, и `/metrics`, который проксирует эндпоинт
-метрик бэкенда (возвращая `503`, когда бэкенд недоступен). У compose-стека LLM
-свой Prometheus для метрик бэкенда, а у compose-стека шлюза — отдельный
-Prometheus для метрик шлюза.
+метрик бэкенда (возвращая `503`, когда бэкенд недоступен). Оба читает
+`gateway-vmagent` из стека шлюза и отправляет в центральный VictoriaMetrics;
+метрики узла и GPU так же отправляет `llm-vmagent` из стека LLM.
 
 ## Структура
 
 ```text
 gateway/               код FastAPI-шлюза
-deploy/llm             compose-файлы LLM-движка, скрипты запуска, экспортеры узла и GPU
-deploy/gateway         compose-файл шлюза — и только его
-deploy/observability   compose-файл центрального стека: Valkey, Loki, Tempo, OTEL, Prometheus
+deploy/build_images.sh сборка образов с фиксированной версией и запись тега в .env
+deploy/llm             compose-файлы LLM-движка, скрипты запуска, экспортеры узла и GPU, агент метрик
+deploy/gateway         compose-файл шлюза и его агента метрик
+deploy/observability   compose-файл центрального стека: Valkey, Loki, Tempo, OTEL, VictoriaMetrics
 observability/         JSON-экспорты дашбордов для импорта в существующий Grafana/workspace
 docs/                  справочник по развёртыванию, метрикам и трассировке
 ```
@@ -49,7 +50,8 @@ Tempo собирают события и трассы всех движков в
 
 Стек шлюза при этом от стека наблюдаемости не зависит: шлюз стартует и
 проксирует, даже когда центральная машина недоступна. Доставка в Loki и Tempo —
-push, её отказ только считается в метриках; вызовы Valkey закрывает
+push, её отказ только считается в метриках; метрики отправляет отдельный
+агент, от которого шлюз не зависит; вызовы Valkey закрывает
 предохранитель, поэтому лежащий Valkey не добавляет к запросам таймаутов.
 Подробности — в [Развёртывании](docs/DEPLOY.md).
 
@@ -66,10 +68,10 @@ push, её отказ только считается в метриках; вы�
 
 ```bash
 cp deploy/observability/.env.example deploy/observability/.env
-cp deploy/observability/configs/prometheus.example.yaml deploy/observability/configs/prometheus.yaml
 cp deploy/observability/configs/valkey.example.conf deploy/observability/configs/valkey.conf
 # отредактируйте deploy/observability/.env: OBSERVABILITY_HOST должен быть
-# адресом, доступным машинам с движками; в valkey.conf замените requirepass
+# адресом, доступным машинам с движками, *_VOLUME — существующими каталогами
+# (см. OBSERVABILITY_RUN_AS); в valkey.conf замените requirepass
 
 cp deploy/llm/.env.example deploy/llm/.env
 cp deploy/llm/serve_vllm.example.sh deploy/llm/serve_vllm.sh
@@ -77,9 +79,19 @@ cp deploy/llm/serve_sglang.example.sh deploy/llm/serve_sglang.sh
 # отредактируйте deploy/llm/.env и скрипт запуска выбранного бэкенда
 
 cp deploy/gateway/.env.example deploy/gateway/.env
-# отредактируйте deploy/gateway/.env: обязательно GATEWAY_ENGINE_ID и адреса
-# центральной машины; пароль Valkey — в GATEWAY_VALKEY_URL
+# отредактируйте deploy/gateway/.env: обязательно GATEWAY_ENGINE_ID,
+# GATEWAY_HOST_ID (= LLM_HOST_ID) и адреса центральной машины; пароль Valkey —
+# в GATEWAY_VALKEY_URL
 ```
+
+Соберите образы — скрипт сам запишет их теги в оба `.env`:
+
+```bash
+deploy/build_images.sh
+```
+
+На машины, которые не собирают сами, образы переносятся архивом: `--save-dir`
+сохраняет его, `docker load -i` загружает (см. [Развёртывание](docs/DEPLOY.md)).
 
 Поднимите центральный стек — один раз, на выбранной машине:
 
@@ -88,9 +100,8 @@ cd deploy/observability
 docker compose --env-file .env -f docker-compose.yaml up -d
 ```
 
-Затем перечислите шлюзы и их имена в
-`deploy/observability/configs/prometheus.yaml`: Loki и Tempo получают метку
-`engine` вместе с данными, а Prometheus работает по pull и должен знать адреса.
+Списка машин центральному стеку не нужно: логи, трассы и метрики приходят по
+push и уже несут метки `engine` и `host`.
 
 Дальше — на каждой машине с движком. Сначала запустите один из вариантов
 бэкенда и проверьте его напрямую.
@@ -99,7 +110,7 @@ vLLM:
 
 ```bash
 cd deploy/llm
-docker compose --env-file .env -f docker-compose.vllm.yaml up -d --build
+docker compose --env-file .env -f docker-compose.vllm.yaml up -d
 docker compose --env-file .env -f docker-compose.vllm.yaml --profile test run --rm llm-smoke-tests
 ```
 
@@ -107,7 +118,7 @@ SGLang:
 
 ```bash
 cd deploy/llm
-docker compose --env-file .env -f docker-compose.sglang.yaml up -d --build
+docker compose --env-file .env -f docker-compose.sglang.yaml up -d
 docker compose --env-file .env -f docker-compose.sglang.yaml --profile test run --rm llm-smoke-tests
 ```
 
@@ -116,7 +127,7 @@ docker compose --env-file .env -f docker-compose.sglang.yaml --profile test run 
 
 ```bash
 cd deploy/gateway
-docker compose --env-file .env -f docker-compose.yaml up -d --build
+docker compose --env-file .env -f docker-compose.yaml up -d
 docker compose --env-file .env -f docker-compose.yaml --profile test run --rm gateway-smoke-tests
 ```
 
@@ -150,11 +161,10 @@ Smoke-тесты разделены на два набора:
 - эндпоинт метрик шлюза: `http://0.0.0.0:9090/gateway/metrics`
 - прокси метрик бэкенда: `http://0.0.0.0:9090/metrics`
 - node-exporter: `http://127.0.0.1:9100`
-- dcgm-exporter: `http://127.0.0.1:9400`
 
 На центральной машине:
 
-- Prometheus: `http://0.0.0.0:9091`
+- VictoriaMetrics: `http://0.0.0.0:8428` (запись — `/api/v1/write`)
 - Loki: `http://0.0.0.0:3100`
 - Tempo: `http://0.0.0.0:3200`
 - OTLP/gRPC: `0.0.0.0:4317`
