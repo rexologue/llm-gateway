@@ -144,8 +144,6 @@ class Settings:
     session_store_key_prefix: str
     session_store_ttl_sec: int
     session_store_max_connections: int
-    session_store_max_record_bytes: int
-    session_store_write_attempts: int
 
     # Backend draining independent of the caller.
     drain_after_disconnect: bool
@@ -265,12 +263,6 @@ class Settings:
             session_store_ttl_sec=int(os.getenv("GATEWAY_SESSION_STORE_TTL", "1296000")),
             session_store_max_connections=int(
                 os.getenv("GATEWAY_SESSION_STORE_MAX_CONNECTIONS", "256")
-            ),
-            session_store_max_record_bytes=int(
-                os.getenv("GATEWAY_SESSION_STORE_MAX_RECORD_BYTES", "4194304")
-            ),
-            session_store_write_attempts=int(
-                os.getenv("GATEWAY_SESSION_STORE_WRITE_ATTEMPTS", "5")
             ),
 
             # Backend draining independent of the caller.

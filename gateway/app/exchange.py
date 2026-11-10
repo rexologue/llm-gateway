@@ -59,7 +59,6 @@ ERROR_BODY_EXCERPT_CHARS = 2000
 
 MONITOR_EVENT_INFERENCE_FINISHED = "inference_finished"
 
-WARN_HISTORY_DIVERGED = "session_history_diverged"
 WARN_DRAIN_TIMEOUT = "backend_drain_timeout"
 WARN_DRAIN_OVERSIZED = "backend_drain_oversized"
 WARN_TRANSCRIPT_NOT_SAVED = "session_transcript_not_saved"
@@ -682,7 +681,7 @@ class ProxyExchange:
         outcome: ExchangeOutcome,
         duration_sec: float,
     ) -> None:
-        """Append this exchange to its session transcript."""
+        """Append this exchange to its session."""
 
         payload = self.payload if isinstance(self.payload, dict) else None
 
@@ -725,9 +724,7 @@ class ProxyExchange:
             await self.log.session_write(
                 warn_reason=warn_reason,
                 delivery=outcome.delivery,
-                message_cnt=result.message_cnt,
                 turn_cnt=result.turn_cnt,
-                dropped_cnt=result.dropped_cnt,
             )
 
 
@@ -824,16 +821,7 @@ class ProxyExchange:
         if not result.saved:
             return WARN_TRANSCRIPT_NOT_SAVED
 
-        if result.warn_reason is not None:
-            return result.warn_reason
-
-        if result.dropped_cnt:
-            return WARN_HISTORY_DIVERGED
-
-        if outcome.warn_reason is not None:
-            return outcome.warn_reason
-
-        return None
+        return outcome.warn_reason
 
 
     @staticmethod

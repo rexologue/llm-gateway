@@ -9,6 +9,7 @@ out of ``?pretty=1`` and cannot render nesting from a structural JSON cell.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any, cast
 
 import orjson
@@ -23,7 +24,7 @@ from app.route_paths import (
 from app.state import AppState
 
 TRUTHY_QUERY_VALUES = {"1", "true", "yes", "on"}
-PRETTY_FIELDS = ("tools", "messages", "turns", "revisions")
+PRETTY_FIELDS = ("tools", "messages", "turns")
 
 
 def create_session_router() -> APIRouter:
@@ -33,12 +34,24 @@ def create_session_router() -> APIRouter:
 
     @router.get(GATEWAY_SESSION_LIST_ROUTE)
     async def session_list(request: Request) -> JSONResponse:
-        """Return metadata summaries for all persisted chat sessions."""
+        """Return metadata summaries of the sessions active in a period.
+
+        ``from`` and ``to`` are optional epoch milliseconds, the format of
+        Grafana's ``${__from}``/``${__to}``. Without them every stored session
+        is listed.
+        """
 
         state = cast(AppState, request.app.state.gateway_state)
 
         try:
-            sessions = await state.session_store.list_sessions()
+            since = _query_epoch_ms(request, "from")
+            until = _query_epoch_ms(request, "to")
+
+        except ValueError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+
+        try:
+            sessions = await state.session_store.list_sessions(since=since, until=until)
 
         except RedisError as exc:
             return JSONResponse(
@@ -79,6 +92,25 @@ def _query_flag(request: Request, name: str) -> bool:
     """Return whether a query flag was set to a truthy value."""
 
     return request.query_params.get(name, "").lower() in TRUTHY_QUERY_VALUES
+
+
+def _query_epoch_ms(request: Request, name: str) -> datetime | None:
+    """Return a query parameter given in epoch milliseconds as a UTC datetime.
+
+    An absent or empty parameter is None; anything that is not an integer
+    number of milliseconds raises ValueError with a message for the client.
+    """
+
+    raw = request.query_params.get(name, "").strip()
+
+    if not raw:
+        return None
+
+    try:
+        return datetime.fromtimestamp(int(raw) / 1000, tz=UTC)
+
+    except (ValueError, OverflowError, OSError) as exc:
+        raise ValueError(f"{name!r} must be epoch milliseconds, got {raw!r}") from exc
 
 
 def _with_pretty_fields(session: dict[str, Any]) -> dict[str, Any]:

@@ -9,6 +9,7 @@ itself is covered by ``test_backend_contract.py``.
 from __future__ import annotations
 
 import json
+import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
@@ -28,6 +29,7 @@ from smoke_common import (
     post_chat,
     request_headers,
     stream_chat,
+    turn_output,
 )
 
 
@@ -47,10 +49,10 @@ def test_session_keeps_non_stream_assistant_turn() -> None:
 
     record = fetch_session(headers["X-Session-ID"])
     assert record["metadata"]["session_id"] == headers["X-Session-ID"]
-    assert record["tools"] == []
+    assert record["tools"] == {}
 
-    last_message = record["messages"][-1]
-    assert last_message.get("role") == "assistant"
+    last_message = turn_output(record, record["turns"][-1])
+    assert last_message is not None and last_message.get("role") == "assistant"
     assert isinstance(last_message.get("content"), str)
     assert last_message["content"].strip()
 
@@ -68,8 +70,9 @@ def test_session_keeps_stream_assistant_turn_when_drained() -> None:
     assert saw_done, "stream did not terminate with a [DONE] sentinel"
     assert content.strip(), "stream produced no assistant content"
 
-    last_message = fetch_session(headers["X-Session-ID"])["messages"][-1]
-    assert last_message.get("role") == "assistant"
+    record = fetch_session(headers["X-Session-ID"])
+    last_message = turn_output(record, record["turns"][-1])
+    assert last_message is not None and last_message.get("role") == "assistant"
     assert isinstance(last_message.get("content"), str)
     assert last_message["content"].strip()
 
@@ -90,7 +93,8 @@ def test_session_keeps_stream_assistant_turn_after_early_disconnect() -> None:
     assert saw_done, "stream did not terminate with a [DONE] sentinel"
     assert content.strip(), "stream produced no assistant content"
 
-    last_message = fetch_session(headers["X-Session-ID"])["messages"][-1]
+    record = fetch_session(headers["X-Session-ID"])
+    last_message = turn_output(record, record["turns"][-1]) or {}
     assert last_message.get("role") == "assistant", (
         "assistant turn was dropped after the client disconnected at [DONE]"
     )
@@ -122,12 +126,13 @@ def test_session_keeps_declared_tools_and_tool_calls() -> None:
 
     record = fetch_session(headers["X-Session-ID"])
 
-    stored_tools = record.get("tools")
+    turn = record["turns"][-1]
+    stored_tools = record["tools"].get(turn["tools"])
     assert isinstance(stored_tools, list) and stored_tools
     assert stored_tools[0]["function"]["name"] == TOOL_NAME
 
-    last_message = record["messages"][-1]
-    assert last_message.get("role") == "assistant"
+    last_message = turn_output(record, turn)
+    assert last_message is not None and last_message.get("role") == "assistant"
 
     stored_tool_calls = last_message.get("tool_calls")
     assert isinstance(stored_tool_calls, list) and stored_tool_calls
@@ -158,6 +163,32 @@ def test_session_list_reports_the_session() -> None:
     assert headers["X-Session-ID"] in session_ids, json.dumps(sessions)[:2000]
 
 
+def test_session_list_filters_by_period() -> None:
+    """The list keeps a session inside a period around it and drops it outside."""
+
+    headers = request_headers("smoke-session-list-period")
+    response = post_chat(chat_payload(), headers)
+
+    assert response.status_code == 200, response.text
+
+    now_ms = int(time.time() * 1000)
+    hour_ms = 3_600_000
+
+    def listed(client: httpx.Client, since: int, until: int) -> set[Any]:
+        reply = client.get("/gateway/session_list", params={"from": since, "to": until})
+        assert reply.status_code == 200, reply.text
+        return {entry.get("session_id") for entry in reply.json() if isinstance(entry, dict)}
+
+    with httpx.Client(base_url=BASE_URL, timeout=TIMEOUT_SEC) as client:
+        around = listed(client, now_ms - hour_ms, now_ms + hour_ms)
+        before = listed(client, now_ms - 3 * hour_ms, now_ms - 2 * hour_ms)
+        invalid = client.get("/gateway/session_list", params={"from": "yesterday"})
+
+    assert headers["X-Session-ID"] in around
+    assert headers["X-Session-ID"] not in before
+    assert invalid.status_code == 400, invalid.text
+
+
 
 
 def test_session_keeps_the_whole_turn_after_a_mid_stream_hangup() -> None:
@@ -181,7 +212,7 @@ def test_session_keeps_the_whole_turn_after_a_mid_stream_hangup() -> None:
 
     record = fetch_session(headers["X-Session-ID"])
     turn = record["turns"][-1]
-    stored = record["messages"][-1]
+    stored = turn_output(record, turn) or {}
 
     assert stored.get("role") == "assistant"
     assert isinstance(stored.get("content"), str) and stored["content"].strip()
@@ -255,9 +286,9 @@ def test_session_keeps_history_the_client_stopped_sending() -> None:
     assert first.status_code == 200, first.text
 
     record = fetch_session(headers["X-Session-ID"])
-    head = record["messages"][0]
+    head = record["turns"][0]["input"][0]
     trimmed = [
-        record["messages"][-1],
+        turn_output(record, record["turns"][0]),
         {"role": "user", "content": "Say the word beta and nothing else."},
     ]
     second = post_chat(chat_payload(messages=trimmed), headers)
@@ -265,9 +296,13 @@ def test_session_keeps_history_the_client_stopped_sending() -> None:
     assert second.status_code == 200, second.text
 
     record = fetch_session(headers["X-Session-ID"], turns=2)
+    second_turn = record["turns"][1]
 
-    assert record["messages"][0] == head, "the head of the dialog was dropped"
-    assert len(record["messages"]) == 4, [m.get("role") for m in record["messages"]]
+    assert head in record["messages"], "the head of the dialog was dropped"
+    assert second_turn["input"][0] == record["turns"][0]["output"], (
+        "the echoed answer must be the stored one, not a new message"
+    )
+    assert len(record["messages"]) == 4, list(record["messages"].values())
 
 
 def test_session_records_concurrent_requests_without_losing_one() -> None:
@@ -304,10 +339,12 @@ def test_session_records_a_failed_exchange() -> None:
     record = fetch_session(headers["X-Session-ID"])
     turn = record["turns"][-1]
 
-    assert turn["assistant_index"] is None, turn
+    assert turn["output"] is None, turn
     assert isinstance(turn.get("error"), dict) and turn["error"].get("status_code"), turn
     assert record["metadata"]["totals"]["failed_requests"] >= 1, record["metadata"]["totals"]
-    assert [message.get("role") for message in record["messages"]] == ["user"], record["messages"]
+    assert [message.get("role") for message in record["messages"].values()] == ["user"], (
+        record["messages"]
+    )
 
 
 def _stream_raw_events(payload: dict[str, Any], headers: dict[str, str]) -> list[str]:

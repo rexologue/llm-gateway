@@ -1,20 +1,29 @@
-"""Persist the full chat transcript of each session in Valkey.
+"""Persist every chat session as content-addressed blocks in Valkey.
 
-The store owns the shape of a stored dialog end to end: how an exchange is
-appended, how a client's view of the history is reconciled with the recorded
-one, and how older record versions are read. Those helpers live on
-``SessionStore`` rather than in a module of their own because nothing else
-consumes them, and they are pure - the merge can be tested without Valkey.
+A session is four keys, all sharing one hash tag so they land in one slot:
 
-``record_exchange`` is the only write path. Both response shapes and both
-outcomes - an answer or a failure - go through it, so a dialog can never be
-half-recorded by one branch and fully by another.
+    {prefix}{<session_id>}:meta      HASH  created_at, updated_at, running totals
+    {prefix}{<session_id>}:messages  HASH  hash -> message JSON, each one stored once
+    {prefix}{<session_id>}:tools     HASH  hash -> tools declaration JSON
+    {prefix}{<session_id>}:turns     LIST  one JSON entry per exchange
+
+The store keeps what was observed and nothing it would have to infer. Every
+message that crossed the gateway - the client's history, a tool result, the
+model's answer - is stored once under the hash of its exact JSON, and a turn is
+the ordered list of hashes the client sent plus the hash of what the model
+answered. The client may resend the whole history, trim it, rewrite the system
+prompt, or drop tool calls it already handled; none of that needs reconciling,
+because nothing is merged. Rebuilding a readable dialog is the reader's job.
+
+Writing never reads. One exchange is a single MULTI/EXEC of HSET, RPUSH and
+HINCRBY commands, so concurrent requests on one session cannot lose each
+other's turn, and the cost of a write does not grow with the session.
 """
 
 from __future__ import annotations
 
+import hashlib
 import logging
-import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -37,31 +46,20 @@ from app.tracing import (
 logger = logging.getLogger(__name__)
 tracer = trace.get_tracer(TRACER_NAME)
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
+HASH_HEX_CHARS = 32
 
 DELIVERY_COMPLETE = "complete"
 DELIVERY_DRAINED = "drained_after_disconnect"
 DELIVERY_CLIENT_GONE = "client_disconnected"
 DELIVERY_TRUNCATED = "truncated"
 
-WARN_REVISIONS_EVICTED = "session_record_revisions_evicted"
-WARN_TURNS_EVICTED = "session_record_turns_evicted"
-WARN_OVER_LIMIT = "session_record_over_limit"
-WARN_WRITE_CONTENDED = "session_record_write_contended"
-
-
-@dataclass(slots=True)
-class MergeResult:
-    """The outcome of reconciling a client's history with the stored one."""
-
-    messages: list[Any]
-    appended_cnt: int
-    dropped: list[Any]
+TOTAL_FIELDS = ("requests", "failed_requests", "prompt_tokens", "completion_tokens")
 
 
 @dataclass(slots=True)
 class SessionExchange:
-    """One completed proxy exchange, ready to be appended to a transcript.
+    """One completed proxy exchange, ready to be appended to its session.
 
     ``messages`` is the history exactly as the client sent it, and ``turn`` is
     what the backend answered. A failed exchange carries ``error`` and no turn:
@@ -91,15 +89,197 @@ class SessionWriteResult:
     """What one transcript write did, for logging and metrics."""
 
     saved: bool
-    message_cnt: int = 0
     turn_cnt: int = 0
-    appended_cnt: int = 0
-    dropped_cnt: int = 0
-    warn_reason: str | None = None
+
+
+@dataclass(slots=True)
+class TurnBlocks:
+    """One exchange split into the blocks it adds to its session."""
+
+    messages: dict[str, bytes]
+    tools: dict[str, bytes]
+    entry: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class SessionKeys:
+    """The Valkey keys of one session."""
+
+    meta: str
+    messages: str
+    tools: str
+    turns: str
+
+    def all(self) -> tuple[str, str, str, str]:
+        """Return every key, for commands that apply to the whole session."""
+
+        return (self.meta, self.messages, self.tools, self.turns)
+
+
+def content_hash(value: Any) -> tuple[str, bytes]:
+    """Return the content address of a JSON value and its canonical encoding.
+
+    Keys are sorted so the same message always hashes the same, whichever order
+    a client serialized it in. Beyond ``compact_message`` nothing is
+    normalized: a message that differs in any set field is a different message.
+    """
+
+    encoded = orjson.dumps(value, option=orjson.OPT_SORT_KEYS)
+
+    return hashlib.sha256(encoded).hexdigest()[:HASH_HEX_CHARS], encoded
+
+
+def compact_message(message: Any) -> Any:
+    """Drop the fields of a message that carry no value.
+
+    Backends fill a non-streamed answer with ``"refusal": null``,
+    ``"tool_calls": []`` and the like, while a client echoing that answer back
+    usually sends only what is set. Both are the same message, and dropping the
+    empty fields lets them share one hash. Anything with a value is kept as is.
+    """
+
+    if not isinstance(message, dict):
+        return message
+
+    return {
+        key: value
+        for key, value in message.items()
+        if value is not None and value != [] and value != {}
+    }
+
+
+def build_turn(exchange: SessionExchange) -> TurnBlocks:
+    """Split one exchange into new messages, a tools declaration and a turn entry."""
+
+    messages: dict[str, bytes] = {}
+
+    def address(message: Any) -> str:
+        digest, encoded = content_hash(compact_message(message))
+        messages[digest] = encoded
+        return digest
+
+    tools: dict[str, bytes] = {}
+    tools_hash: str | None = None
+
+    if exchange.tools:
+        tools_hash, encoded_tools = content_hash(exchange.tools)
+        tools[tools_hash] = encoded_tools
+
+    turn = exchange.turn
+    choices = turn.choices if turn is not None else []
+
+    entry: dict[str, Any] = {
+        "request_id": exchange.request_id,
+        "started_at": exchange.started_at,
+        "finished_at": exchange.finished_at,
+        "model": turn.model if turn is not None and turn.model else exchange.model,
+        "stream": exchange.stream,
+        "status_code": exchange.status_code,
+        "params": exchange.params,
+        "tools": tools_hash,
+        "input": [address(message) for message in exchange.messages],
+        "output": address(choices[0].message) if choices else None,
+        "finish_reason": turn.finish_reason if turn is not None else None,
+        "usage": turn.usage if turn is not None else None,
+        "ttft_sec": exchange.ttft_sec,
+        "e2e_sec": exchange.e2e_sec,
+        "delivery": exchange.delivery,
+        "error": exchange.error,
+    }
+
+    # Branch: the backend answered with more than one candidate. The first one
+    # is the turn's output; the rest are kept addressable but apart from it.
+    if len(choices) > 1:
+        entry["extra_outputs"] = [
+            {
+                "index": choice.index,
+                "output": address(choice.message),
+                "finish_reason": choice.finish_reason,
+            }
+            for choice in choices[1:]
+        ]
+
+    if turn is not None and turn.truncated:
+        entry["truncated"] = True
+
+    return TurnBlocks(messages=messages, tools=tools, entry=entry)
+
+
+def turn_totals(exchange: SessionExchange) -> dict[str, int]:
+    """Return what one exchange adds to the session's running totals."""
+
+    totals = {"requests": 1}
+
+    failed = exchange.error is not None or (
+        exchange.status_code is not None and exchange.status_code >= 400
+    )
+    if failed:
+        totals["failed_requests"] = 1
+
+    usage = exchange.turn.usage if exchange.turn is not None else None
+    if isinstance(usage, dict):
+        for name in ("prompt_tokens", "completion_tokens"):
+            value = usage.get(name)
+            if isinstance(value, int) and value:
+                totals[name] = value
+
+    return totals
+
+
+def assemble_session(
+    session_id: str,
+    *,
+    meta: dict[str, str],
+    messages: dict[str, Any],
+    tools: dict[str, Any],
+    turns: list[dict[str, Any]],
+    ttl_sec: int | None,
+    now: datetime,
+) -> dict[str, Any]:
+    """Return the session record a reader gets, from its four stored blocks.
+
+    Turns are ordered by when they started, not by when they were written: an
+    answer the gateway drained after its caller left is written after the
+    request that replaced it. Messages and tools are listed in the order the
+    turns first reference them, so the record reads top to bottom.
+    """
+
+    ordered_turns = sorted(turns, key=lambda turn: str(turn.get("started_at") or ""))
+
+    message_order: list[str] = []
+    tools_order: list[str] = []
+
+    for turn in ordered_turns:
+        message_order.extend(turn.get("input") or [])
+        message_order.append(turn.get("output"))
+        message_order.extend(extra.get("output") for extra in turn.get("extra_outputs") or [])
+        tools_order.append(turn.get("tools"))
+
+    created_at = meta.get("created_at")
+    updated_at = meta.get("updated_at")
+
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "metadata": {
+            "session_id": session_id,
+            "created_at": created_at,
+            "updated_at": updated_at,
+            "age_sec": _elapsed_seconds(created_at, now),
+            "idle_sec": _elapsed_seconds(updated_at, now),
+            "expires_in_sec": ttl_sec,
+            "message_cnt": len(messages),
+            "tools_cnt": len(tools),
+            "turn_cnt": len(ordered_turns),
+            "totals": {name: int(meta.get(name) or 0) for name in TOTAL_FIELDS},
+        },
+        "messages": _ordered(messages, message_order),
+        "tools": _ordered(tools, tools_order),
+        "turns": ordered_turns,
+    }
 
 
 class SessionStore:
-    """Store the full chat transcript observed for each external session id.
+    """Store every exchange observed for each external session id.
 
     The Valkey behind it lives in the central observability stack, which a
     gateway may run without. Persistence is therefore optional by construction:
@@ -114,17 +294,15 @@ class SessionStore:
         prefix: str,
         ttl_sec: int,
         max_connections: int,
-        max_record_bytes: int = 0,
-        write_attempts: int = 5,
         enabled: bool = True,
         breaker_failures: int = 3,
         breaker_cooldown_sec: float = 30.0,
     ) -> None:
-        """Initialize the Valkey-backed persisted session store."""
+        """Initialize the Valkey-backed session store."""
 
         self.enabled = enabled
-        self.max_record_bytes = max(0, max_record_bytes)
-        self.write_attempts = max(1, write_attempts)
+        self.prefix = prefix
+        self.ttl_sec = max(1, int(ttl_sec))
         self.store = ValkeyJsonStore(
             api_url=api_url,
             prefix=prefix,
@@ -137,9 +315,30 @@ class SessionStore:
 
     @property
     def available(self) -> bool:
-        """Return whether transcript persistence is currently reaching Valkey."""
+        """Return whether session persistence is currently reaching Valkey."""
 
         return self.enabled and self.store.available
+
+
+    def keys(self, session_id: str) -> SessionKeys:
+        """Return the keys of one session."""
+
+        base = f"{self.prefix}{{{session_id}}}"
+
+        return SessionKeys(
+            meta=f"{base}:meta",
+            messages=f"{base}:messages",
+            tools=f"{base}:tools",
+            turns=f"{base}:turns",
+        )
+
+
+    def session_id_from_meta_key(self, key: bytes | str) -> str:
+        """Return the session id encoded in a ``…{<session_id>}:meta`` key."""
+
+        text = key.decode("utf-8") if isinstance(key, bytes) else key
+
+        return text[len(self.prefix) + 1 : -len("}:meta")]
 
 
     def _require_enabled(self) -> None:
@@ -158,525 +357,298 @@ class SessionStore:
 
         with tracer.start_as_current_span(
             SPAN_VALKEY_OPERATION,
-            attributes=valkey_operation_span_attrs(
-                operation="close",
-                prefix=self.store.prefix,
-            ),
+            attributes=valkey_operation_span_attrs(operation="close", prefix=self.prefix),
         ):
             await self.store.close()
 
 
     async def record_exchange(self, exchange: SessionExchange) -> SessionWriteResult:
-        """Append one exchange to its session transcript.
-
-        The whole update runs inside one atomic Valkey transaction, so two
-        concurrent requests on the same session cannot overwrite each other's
-        turn - the loser of the race replays its append on the winner's record.
-        """
+        """Append one exchange to its session in a single transaction."""
 
         if not self.enabled or not isinstance(exchange.messages, list):
             return SessionWriteResult(saved=False)
 
-        outcome = SessionWriteResult(saved=False)
+        blocks = build_turn(exchange)
+        keys = self.keys(exchange.session_id)
 
-        def mutate(current: Any) -> dict[str, Any]:
-            """Merge this exchange into the record read under WATCH."""
+        def write(pipe: Any) -> None:
+            if blocks.messages:
+                pipe.hset(keys.messages, mapping=blocks.messages)
 
-            record = self._coerce_record(current)
-            self._apply_exchange(record, exchange, outcome)
+            if blocks.tools:
+                pipe.hset(keys.tools, mapping=blocks.tools)
 
-            return record
+            pipe.rpush(keys.turns, orjson.dumps(blocks.entry))
+            pipe.hsetnx(keys.meta, "created_at", exchange.started_at)
+            pipe.hset(keys.meta, "updated_at", exchange.finished_at)
+
+            for name, value in turn_totals(exchange).items():
+                pipe.hincrby(keys.meta, name, value)
+
+            for key in keys.all():
+                pipe.expire(key, self.ttl_sec)
 
         try:
             with tracer.start_as_current_span(
                 SPAN_VALKEY_OPERATION,
                 attributes=valkey_operation_span_attrs(
-                    operation="update",
-                    prefix=self.store.prefix,
+                    operation="append_turn",
+                    prefix=self.prefix,
                     record_id=exchange.session_id,
                 ),
             ) as span:
-                saved = await self.store.update(
-                    exchange.session_id,
-                    mutate,
-                    max_attempts=self.write_attempts,
-                )
-                outcome.saved = saved
+                replies = await self.store.execute(write)
+                # RPUSH answers with the new list length; it follows the HSETs
+                # that were actually queued.
+                turn_cnt = int(replies[bool(blocks.messages) + bool(blocks.tools)])
+                set_span_attributes(span, valkey_result_span_attrs(updated=True, count=turn_cnt))
 
-                if not saved:
-                    outcome.warn_reason = WARN_WRITE_CONTENDED
-
-                set_span_attributes(
-                    span,
-                    valkey_result_span_attrs(updated=saved, count=outcome.message_cnt),
-                )
-
-            return outcome
+            return SessionWriteResult(saved=True, turn_cnt=turn_cnt)
 
         except RedisError as exc:
-            # An already-open breaker is expected, not news: the outage it
-            # stands for was logged when it was first detected.
-            if isinstance(exc, ValkeyUnavailable):
-                logger.debug("Session store record_exchange skipped: %s", exc)
-            else:
-                logger.warning("Session store record_exchange failed: %s", exc)
-
-            add_current_span_error_event(
-                "session_store.error",
-                exc,
-                {
-                    "operation": "record_exchange",
-                    "error.type": type(exc).__name__,
-                },
-            )
+            self._log_error("record_exchange", exc)
             return SessionWriteResult(saved=False)
 
 
     async def get_session(self, session_id: str) -> dict[str, Any] | None:
-        """Return one stored session record, or None when it is absent.
-
-        The stored ``metadata`` is enriched at read time with live durations the
-        record itself cannot hold: ``expires_in_sec`` (remaining TTL), ``age_sec``
-        (lifetime since the first request, from ``created_at``), and ``idle_sec``
-        (time since the last request, from ``updated_at``).
-        """
+        """Return one stored session, or None when it is absent."""
 
         self._require_enabled()
+        keys = self.keys(session_id)
+
+        def read(pipe: Any) -> None:
+            pipe.hgetall(keys.meta)
+            pipe.hgetall(keys.messages)
+            pipe.hgetall(keys.tools)
+            pipe.lrange(keys.turns, 0, -1)
+            pipe.ttl(keys.turns)
+            pipe.get(self._legacy_key(session_id))
 
         with tracer.start_as_current_span(
             SPAN_VALKEY_OPERATION,
             attributes=valkey_operation_span_attrs(
-                operation="get",
-                prefix=self.store.prefix,
+                operation="get_session",
+                prefix=self.prefix,
                 record_id=session_id,
             ),
         ) as span:
-            record = await self.store.get(session_id)
-            found = isinstance(record, dict)
+            meta, messages, tools, turns, ttl, legacy = await self.store.execute(
+                read,
+                transaction=False,
+            )
+            found = bool(meta or turns or legacy)
             set_span_attributes(span, valkey_result_span_attrs(found=found))
 
-            if not found:
-                return None
+        if not meta and not turns:
+            # Records written before schema 3 are one JSON value under the bare
+            # session key. They are served untouched until their TTL runs out.
+            return orjson.loads(legacy) if legacy is not None else None
 
-            ttl_sec = await self.store.ttl(session_id)
+        return assemble_session(
+            session_id,
+            meta=_decode_fields(meta),
+            messages=_decode_values(messages),
+            tools=_decode_values(tools),
+            turns=[orjson.loads(raw) for raw in turns],
+            ttl_sec=ttl if isinstance(ttl, int) and ttl >= 0 else None,
+            now=datetime.now(UTC),
+        )
 
-        return self._with_live_metadata(record, ttl_sec)
 
+    async def list_sessions(
+        self,
+        *,
+        since: datetime | None = None,
+        until: datetime | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return one summary per session active in a period, newest activity first.
 
-    async def list_sessions(self) -> list[dict[str, Any]]:
-        """Return one metadata summary per stored session, newest activity first.
-
-        Each entry mirrors the persisted ``metadata`` plus the read-time
-        durations (``age_sec``, ``idle_sec``, ``expires_in_sec``) and declared
-        tool and turn counts, so a viewer can list sessions and their lifetimes
-        without fetching every full record.
+        A session is active in ``[since, until]`` when its lifetime overlaps it:
+        it was created no later than ``until`` and last updated no earlier than
+        ``since``. Either bound may be omitted. Only metadata is read to decide,
+        and the counters are fetched for the sessions that made it through.
         """
 
         self._require_enabled()
-
-        summaries: list[dict[str, Any]] = []
-        now = datetime.now(UTC)
+        pattern = f"{self.prefix}{{*}}:meta"
 
         with tracer.start_as_current_span(
             SPAN_VALKEY_OPERATION,
             attributes=valkey_operation_span_attrs(
-                operation="scan_index",
-                prefix=self.store.prefix,
-                pattern=f"{self.store.prefix}*",
+                operation="scan_sessions",
+                prefix=self.prefix,
+                pattern=pattern,
                 count=100,
             ),
         ) as span:
-            async for key, value in self.store.iter_states():
-                if not isinstance(value, dict):
-                    continue
+            # SCAN may return a key more than once; dict keeps the first.
+            session_ids = list(
+                dict.fromkeys(
+                    [
+                        self.session_id_from_meta_key(key)
+                        async for key in self.store.iter_keys(pattern, count=100)
+                    ]
+                )
+            )
 
-                session_id = self.store.record_id_from_key(key)
-                ttl_sec = await self.store.ttl(session_id)
-                summaries.append(self._summarize_session(session_id, value, ttl_sec, now))
+            def read_meta(pipe: Any) -> None:
+                for session_id in session_ids:
+                    pipe.hgetall(self.keys(session_id).meta)
 
-            set_span_attributes(span, valkey_result_span_attrs(count=len(summaries)))
+            metas = await self.store.execute(read_meta, transaction=False) if session_ids else []
+            selected = [
+                (session_id, fields)
+                for session_id, fields in zip(session_ids, map(_decode_fields, metas))
+                if session_in_period(
+                    fields.get("created_at"),
+                    fields.get("updated_at"),
+                    since=since,
+                    until=until,
+                )
+            ]
+
+            def read_counts(pipe: Any) -> None:
+                for session_id, _fields in selected:
+                    keys = self.keys(session_id)
+                    pipe.hlen(keys.messages)
+                    pipe.hlen(keys.tools)
+                    pipe.llen(keys.turns)
+                    pipe.ttl(keys.meta)
+
+            counts = await self.store.execute(read_counts, transaction=False) if selected else []
+            set_span_attributes(span, valkey_result_span_attrs(count=len(selected)))
+
+        now = datetime.now(UTC)
+        summaries = []
+
+        for position, (session_id, fields) in enumerate(selected):
+            message_cnt, tools_cnt, turn_cnt, ttl = counts[position * 4 : position * 4 + 4]
+            created_at = fields.get("created_at")
+            updated_at = fields.get("updated_at")
+            summaries.append(
+                {
+                    "session_id": session_id,
+                    "created_at": created_at,
+                    "updated_at": updated_at,
+                    "message_cnt": message_cnt,
+                    "tools_cnt": tools_cnt,
+                    "turn_cnt": turn_cnt,
+                    "age_sec": _elapsed_seconds(created_at, now),
+                    "idle_sec": _elapsed_seconds(updated_at, now),
+                    "expires_in_sec": ttl if isinstance(ttl, int) and ttl >= 0 else None,
+                }
+            )
 
         summaries.sort(key=lambda item: item.get("updated_at") or "", reverse=True)
         return summaries
 
 
-    @staticmethod
-    def merge_messages(stored: list[Any], incoming: list[Any]) -> MergeResult:
-        """Reconcile a client's message history with the recorded transcript.
+    def _legacy_key(self, session_id: str) -> str:
+        """Return the key a pre-schema-3 gateway stored this session under."""
 
-        A client is not a reliable narrator of its own dialog: it may resend the
-        whole history, a trimmed window of it, or a corrected version of an
-        earlier turn. Overwriting the record with whatever arrived loses
-        everything the client no longer carries, so instead we align the two.
-
-        We find the offset into the stored transcript whose continuation matches
-        the incoming history for as long as possible, keep everything up to the
-        end of that match, and append the rest of the incoming history. Ties are
-        resolved towards the largest offset, which makes "nothing matched" a
-        plain append rather than a wholesale replacement. Whatever the alignment
-        pushes out is returned in ``dropped`` for the caller to archive.
-        """
-
-        if not stored:
-            return MergeResult(messages=list(incoming), appended_cnt=len(incoming), dropped=[])
-
-        if not incoming:
-            return MergeResult(messages=list(stored), appended_cnt=0, dropped=[])
-
-        stored_prints = [SessionStore.message_fingerprint(item) for item in stored]
-        incoming_prints = [SessionStore.message_fingerprint(item) for item in incoming]
-
-        best_offset = -1
-        best_length = -1
-
-        for offset in range(len(stored) + 1):
-            length = 0
-            while (
-                offset + length < len(stored)
-                and length < len(incoming)
-                and stored_prints[offset + length] == incoming_prints[length]
-            ):
-                length += 1
-
-            if length > best_length or (length == best_length and offset > best_offset):
-                best_offset = offset
-                best_length = length
-
-        boundary = best_offset + best_length
-        appended = list(incoming[best_length:])
-
-        return MergeResult(
-            messages=[*stored[:boundary], *appended],
-            appended_cnt=len(appended),
-            dropped=list(stored[boundary:]),
-        )
+        return f"{self.prefix}{session_id}"
 
 
     @staticmethod
-    def message_fingerprint(message: Any) -> bytes:
-        """Return a comparable identity for one chat message.
+    def _log_error(operation: str, exc: RedisError) -> None:
+        """Record a failed store call; an already-open breaker is not news."""
 
-        Only the fields a client reliably echoes back take part: role, content,
-        tool calls and the tool-result linkage. Fields the gateway records but
-        clients drop - ``reasoning_content``, ``refusal`` - are excluded, since
-        including them would make every stored assistant turn look different
-        from the client's own copy of it and trigger a false divergence.
-
-        Tool call arguments are compared as parsed JSON when they parse, so a
-        client that re-serializes them with different spacing still matches.
-        """
-
-        if not isinstance(message, dict):
-            return orjson.dumps(message, option=orjson.OPT_SORT_KEYS)
-
-        content = message.get("content")
-        identity: dict[str, Any] = {
-            "role": message.get("role"),
-            "content": content if content not in ("", None) else None,
-        }
-
-        for key in ("name", "tool_call_id"):
-            if message.get(key) is not None:
-                identity[key] = message[key]
-
-        tool_calls = message.get("tool_calls")
-        if isinstance(tool_calls, list) and tool_calls:
-            identity["tool_calls"] = [
-                SessionStore._tool_call_identity(call) for call in tool_calls
-            ]
-
-        return orjson.dumps(identity, option=orjson.OPT_SORT_KEYS)
-
-
-    def _apply_exchange(
-        self,
-        record: dict[str, Any],
-        exchange: SessionExchange,
-        outcome: SessionWriteResult,
-    ) -> None:
-        """Merge one exchange into a coerced record, in place."""
-
-        merge = self.merge_messages(record["messages"], exchange.messages)
-        messages = merge.messages
-        appended_indexes = list(
-            range(len(messages) - merge.appended_cnt, len(messages))
-        )
-
-        assistant_index: int | None = None
-        assistant_message = exchange.turn.assistant_message if exchange.turn else None
-
-        if assistant_message is not None:
-            messages.append(assistant_message)
-            assistant_index = len(messages) - 1
-
-        if merge.dropped:
-            record["revisions"].append(
-                {
-                    "at": exchange.finished_at,
-                    "reason": "divergence",
-                    "request_id": exchange.request_id,
-                    "dropped": merge.dropped,
-                }
-            )
-
-        record["messages"] = messages
-
-        # The dialog's declared tools survive a follow-up request that omits
-        # them - a tool result carries no tools, and the viewer should still
-        # show what the dialog was given. Which turn declared what stays exact
-        # in the per-turn audit.
-        record["tools"] = exchange.tools or record["tools"]
-        record["turns"].append(self._turn_entry(exchange, appended_indexes, assistant_index))
-        self._refresh_metadata(record, exchange)
-
-        outcome.message_cnt = len(messages)
-        outcome.turn_cnt = len(record["turns"])
-        outcome.appended_cnt = merge.appended_cnt
-        outcome.dropped_cnt = len(merge.dropped)
-        outcome.warn_reason = self._enforce_size_limit(record, self.max_record_bytes)
-
-
-    @staticmethod
-    def _turn_entry(
-        exchange: SessionExchange,
-        appended_indexes: list[int],
-        assistant_index: int | None,
-    ) -> dict[str, Any]:
-        """Build the audit entry describing one exchange."""
-
-        turn = exchange.turn
-        entry: dict[str, Any] = {
-            "turn_id": uuid.uuid4().hex,
-            "request_id": exchange.request_id,
-            "started_at": exchange.started_at,
-            "finished_at": exchange.finished_at,
-            "model": turn.model if turn and turn.model else exchange.model,
-            "stream": exchange.stream,
-            "status_code": exchange.status_code,
-            "params": exchange.params,
-            "tools": exchange.tools,
-            "appended_indexes": appended_indexes,
-            "assistant_index": assistant_index,
-            "finish_reason": turn.finish_reason if turn else None,
-            "usage": turn.usage if turn else None,
-            "ttft_sec": exchange.ttft_sec,
-            "e2e_sec": exchange.e2e_sec,
-            "delivery": exchange.delivery,
-            "error": exchange.error,
-        }
-
-        # Branch: the backend answered with more than one candidate. Only the
-        # first continues the dialog, so the rest are kept here instead of being
-        # merged into the transcript.
-        if turn is not None and len(turn.choices) > 1:
-            entry["extra_choices"] = [
-                {
-                    "index": choice.index,
-                    "message": choice.message,
-                    "finish_reason": choice.finish_reason,
-                }
-                for choice in turn.choices[1:]
-            ]
-
-        if turn is not None and turn.truncated:
-            entry["truncated"] = True
-
-        return entry
-
-
-    @staticmethod
-    def _refresh_metadata(record: dict[str, Any], exchange: SessionExchange) -> None:
-        """Update record metadata and running totals after an exchange."""
-
-        metadata = record["metadata"]
-        totals = metadata["totals"]
-        turn = exchange.turn
-        usage = turn.usage if turn else None
-
-        metadata["session_id"] = exchange.session_id
-        metadata["created_at"] = metadata.get("created_at") or exchange.started_at
-        metadata["updated_at"] = exchange.finished_at
-        metadata["message_cnt"] = len(record["messages"])
-        metadata["turn_cnt"] = len(record["turns"])
-        metadata["last_request_id"] = exchange.request_id
-        metadata["last_model"] = (turn.model if turn and turn.model else exchange.model)
-        metadata["last_finish_reason"] = turn.finish_reason if turn else None
-
-        totals["requests"] = int(totals.get("requests") or 0) + 1
-
-        failed = exchange.error is not None or (
-            exchange.status_code is not None and exchange.status_code >= 400
-        )
-        if failed:
-            totals["failed_requests"] = int(totals.get("failed_requests") or 0) + 1
-
-        if isinstance(usage, dict):
-            for source, target in (
-                ("prompt_tokens", "prompt_tokens"),
-                ("completion_tokens", "completion_tokens"),
-            ):
-                value = usage.get(source)
-                if isinstance(value, int):
-                    totals[target] = int(totals.get(target) or 0) + value
-
-
-    @staticmethod
-    def _enforce_size_limit(record: dict[str, Any], max_bytes: int) -> str | None:
-        """Trim audit data until the record fits, and report what was cut.
-
-        The dialog itself is never trimmed: ``messages`` is the reason the record
-        exists. Superseded revisions go first, then the oldest turn audit
-        entries, and the newest turn always survives.
-        """
-
-        if max_bytes <= 0 or len(orjson.dumps(record)) <= max_bytes:
-            return None
-
-        warn_reason = None
-
-        while record["revisions"] and len(orjson.dumps(record)) > max_bytes:
-            record["revisions"].pop(0)
-            warn_reason = WARN_REVISIONS_EVICTED
-
-        while len(record["turns"]) > 1 and len(orjson.dumps(record)) > max_bytes:
-            record["turns"].pop(0)
-            warn_reason = WARN_TURNS_EVICTED
-
-        if len(orjson.dumps(record)) > max_bytes:
-            return WARN_OVER_LIMIT
-
-        return warn_reason
-
-
-    @staticmethod
-    def _tool_call_identity(call: Any) -> dict[str, Any]:
-        """Return the comparable identity of one tool call."""
-
-        if not isinstance(call, dict):
-            return {"raw": call}
-
-        function = call.get("function")
-        function = function if isinstance(function, dict) else {}
-        arguments = function.get("arguments")
-
-        if isinstance(arguments, str):
-            parsed = None
-            try:
-                parsed = orjson.loads(arguments)
-            except orjson.JSONDecodeError:
-                parsed = None
-
-            arguments = parsed if parsed is not None else arguments
-
-        return {
-            "id": call.get("id"),
-            "name": function.get("name"),
-            "arguments": arguments,
-        }
-
-
-    @staticmethod
-    def _coerce_record(record: Any) -> dict[str, Any]:
-        """Return a stored record in the current schema.
-
-        Three generations exist. The current one carries ``turns`` and
-        ``revisions`` alongside the dialog. Version 1 had ``metadata``/``tools``/
-        ``messages`` only. The oldest was flat (``session_id``, ``updated_at``,
-        ``message_cnt``, ``messages``), and its top-level fields are lifted into
-        a synthesized metadata block so every generation reads the same way.
-        """
-
-        if not isinstance(record, dict):
-            record = {}
-
-        metadata = record.get("metadata")
-        if isinstance(metadata, dict):
-            metadata = dict(metadata)
+        if isinstance(exc, ValkeyUnavailable):
+            logger.debug("Session store %s skipped: %s", operation, exc)
         else:
-            metadata = {
-                "session_id": record.get("session_id"),
-                "created_at": record.get("created_at"),
-                "updated_at": record.get("updated_at"),
-                "message_cnt": record.get("message_cnt"),
-            }
+            logger.warning("Session store %s failed: %s", operation, exc)
 
-        totals = metadata.get("totals")
-        metadata["totals"] = dict(totals) if isinstance(totals, dict) else {}
-
-        messages = record.get("messages")
-        tools = record.get("tools")
-        turns = record.get("turns")
-        revisions = record.get("revisions")
-
-        return {
-            "schema_version": SCHEMA_VERSION,
-            "metadata": metadata,
-            "tools": tools if isinstance(tools, list) else [],
-            "messages": messages if isinstance(messages, list) else [],
-            "turns": turns if isinstance(turns, list) else [],
-            "revisions": revisions if isinstance(revisions, list) else [],
-        }
+        add_current_span_error_event(
+            "session_store.error",
+            exc,
+            {"operation": operation, "error.type": type(exc).__name__},
+        )
 
 
-    @staticmethod
-    def _summarize_session(
-        session_id: str,
-        record: dict[str, Any],
-        ttl_sec: int | None,
-        now: datetime,
-    ) -> dict[str, Any]:
-        """Build a compact list entry from a stored record of any generation."""
+def session_in_period(
+    created_at: str | None,
+    updated_at: str | None,
+    *,
+    since: datetime | None,
+    until: datetime | None,
+) -> bool:
+    """Return whether a session's lifetime overlaps ``[since, until]``.
 
-        normalized = SessionStore._coerce_record(record)
-        metadata = normalized["metadata"]
+    A missing ``created_at`` falls back to ``updated_at`` and vice versa. A
+    session with neither timestamp only passes when no bound is set.
+    """
 
-        created_at = metadata.get("created_at")
-        updated_at = metadata.get("updated_at")
+    if since is None and until is None:
+        return True
 
-        return {
-            "session_id": session_id,
-            "created_at": created_at,
-            "updated_at": updated_at,
-            "message_cnt": metadata.get("message_cnt"),
-            "tools_cnt": len(normalized["tools"]),
-            "turn_cnt": len(normalized["turns"]),
-            "age_sec": SessionStore._elapsed_seconds(created_at, now),
-            "idle_sec": SessionStore._elapsed_seconds(updated_at, now),
-            "expires_in_sec": ttl_sec,
-        }
+    started = _parse_iso(created_at) or _parse_iso(updated_at)
+    last = _parse_iso(updated_at) or started
 
+    if started is None or last is None:
+        return False
 
-    @staticmethod
-    def _with_live_metadata(
-        record: dict[str, Any],
-        ttl_sec: int | None,
-    ) -> dict[str, Any]:
-        """Return a normalized record with read-time durations in its metadata."""
+    if since is not None and last < since:
+        return False
 
-        now = datetime.now(UTC)
-        normalized = SessionStore._coerce_record(record)
-        metadata = normalized["metadata"]
-
-        metadata["expires_in_sec"] = ttl_sec
-        metadata["age_sec"] = SessionStore._elapsed_seconds(metadata.get("created_at"), now)
-        metadata["idle_sec"] = SessionStore._elapsed_seconds(metadata.get("updated_at"), now)
-
-        return normalized
+    return until is None or started <= until
 
 
-    @staticmethod
-    def _elapsed_seconds(iso_timestamp: Any, now: datetime) -> int | None:
-        """Return whole seconds between an ISO-8601 timestamp and ``now``."""
+def _ordered(blocks: dict[str, Any], order: list[Any]) -> dict[str, Any]:
+    """Return blocks keyed by hash, in first-reference order, unreferenced last."""
 
-        if not isinstance(iso_timestamp, str):
-            return None
+    result: dict[str, Any] = {}
 
-        try:
-            moment = datetime.fromisoformat(iso_timestamp)
-        except ValueError:
-            return None
+    for digest in order:
+        if isinstance(digest, str) and digest in blocks and digest not in result:
+            result[digest] = blocks[digest]
 
-        if moment.tzinfo is None:
-            moment = moment.replace(tzinfo=UTC)
+    for digest, value in blocks.items():
+        result.setdefault(digest, value)
 
-        return max(0, int((now - moment).total_seconds()))
+    return result
+
+
+def _decode_fields(raw: dict[Any, Any]) -> dict[str, str]:
+    """Decode a Valkey hash of plain string fields."""
+
+    return {
+        _text(name): _text(value)
+        for name, value in (raw or {}).items()
+    }
+
+
+def _decode_values(raw: dict[Any, Any]) -> dict[str, Any]:
+    """Decode a Valkey hash whose values are JSON documents."""
+
+    return {_text(name): orjson.loads(value) for name, value in (raw or {}).items()}
+
+
+def _text(value: bytes | str) -> str:
+    """Return a Valkey reply as text."""
+
+    return value.decode("utf-8") if isinstance(value, bytes) else value
+
+
+def _elapsed_seconds(iso_timestamp: Any, now: datetime) -> int | None:
+    """Return whole seconds between an ISO-8601 timestamp and ``now``."""
+
+    moment = _parse_iso(iso_timestamp)
+
+    if moment is None:
+        return None
+
+    return max(0, int((now - moment).total_seconds()))
+
+
+def _parse_iso(iso_timestamp: Any) -> datetime | None:
+    """Return an aware datetime from an ISO-8601 string, or None."""
+
+    if not isinstance(iso_timestamp, str):
+        return None
+
+    try:
+        moment = datetime.fromisoformat(iso_timestamp)
+    except ValueError:
+        return None
+
+    return moment if moment.tzinfo is not None else moment.replace(tzinfo=UTC)

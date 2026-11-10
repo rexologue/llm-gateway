@@ -225,6 +225,14 @@ def fetch_session(session_id: str, *, turns: int = 1) -> dict[str, Any]:
     )
 
 
+def turn_output(record: dict[str, Any], turn: dict[str, Any]) -> dict[str, Any] | None:
+    """Return the message a stored turn answered with, if it has one."""
+
+    output = turn.get("output")
+
+    return record["messages"].get(output) if output is not None else None
+
+
 def choice_text(choice: dict[str, Any]) -> str:
     """Return text from OpenAI-compatible chat or completion choices."""
 

@@ -15,7 +15,7 @@
       }
     ]
   },
-  "description": "Session viewer for the LLM gateway. Everything is served by the gateway itself through the Infinity datasource using RELATIVE urls, so no Loki is needed: the list calls GET /gateway/session_list and the detail panels call GET /gateway/session/{session_id}. Set the Infinity datasource Base URL to the gateway root (e.g. http://llm-gateway:8080) and add that host to Infinity > Security > Allowed hosts. Stored records are {metadata, tools, messages}; the metadata durations (age_sec/idle_sec/expires_in_sec) are computed at read time.",
+  "description": "Session viewer for the LLM gateway. Everything is served by the gateway itself through the Infinity datasource using RELATIVE urls, so no Loki is needed: the list calls GET /gateway/session_list?from=${__from}&to=${__to}, so it shows only the sessions active within the dashboard time range, and the detail panels call GET /gateway/session/{session_id}. Set the Infinity datasource Base URL to the gateway root (e.g. http://llm-gateway:8080) and add that host to Infinity > Security > Allowed hosts. A session is {metadata, messages, tools, turns}: messages and tools hold every unique value under its hash, turns list each exchange as the hashes the client sent (input) and the hash the model answered (output). The metadata durations (age_sec/idle_sec/expires_in_sec) are computed at read time.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
@@ -34,7 +34,7 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "## ⚠️ Если везде «No Data»\n\nЭто **не значит**, что метрики не экспортируются. Сначала убедитесь, что выбран **правильный Data Source** в переменных дашборда (сверху) — без этого панели не найдут данные. После выбора нажмите Refresh.\n\n---\n\n## Как пользоваться\n\nПросмотр сохранённых сессий. В таблице «Stored sessions» найдите нужную сессию и впишите её `session_id` в переменную сверху. Ниже раскроются детали сессии: метаданные, объявленные инструменты и полный диалог сообщений.\n"
+        "content": "## ⚠️ Если везде «No Data»\n\nЭто **не значит**, что метрики не экспортируются. Сначала убедитесь, что выбран **правильный Data Source** в переменных дашборда (сверху) — без этого панели не найдут данные. После выбора нажмите Refresh.\n\n---\n\n## Как пользоваться\n\nПросмотр сохранённых сессий. В таблице «Stored sessions» найдите нужную сессию и впишите её `session_id` в переменную сверху. Ниже раскроются детали сессии: метаданные, уникальные сообщения и объявления инструментов (по хешу) и ходы — что прислал клиент (`input`) и чем ответила модель (`output`). Читаемый диалог удобнее смотреть через `misc/dump_session.py --transcript`.\n"
       },
       "transparent": false
     },
@@ -42,7 +42,7 @@
       "id": 1,
       "type": "table",
       "title": "Stored sessions",
-      "description": "All chat sessions currently persisted in Valkey, newest activity first. age_sec is the lifetime since the first request (from created_at); idle_sec is time since the last request; expires_in_sec is the remaining TTL (reset on every request). Click a session id to load its full record below.",
+      "description": "Chat sessions persisted in Valkey that were active within the dashboard time range (created before its end and last updated after its start), newest activity first. Widen the time range to see older sessions. age_sec is the lifetime since the first request (from created_at); idle_sec is time since the last request; expires_in_sec is the remaining TTL (reset on every request). messages and tools count unique values, turns counts exchanges. Click a session id to load its full record below.",
       "datasource": {
         "type": "yesoreyeram-infinity-datasource",
         "uid": "${DS_INFINITY}"
@@ -64,7 +64,7 @@
           "source": "url",
           "format": "table",
           "parser": "backend",
-          "url": "/gateway/session_list",
+          "url": "/gateway/session_list?from=${__from}&to=${__to}",
           "url_options": {
             "method": "GET",
             "data": "",
@@ -106,6 +106,11 @@
             {
               "selector": "tools_cnt",
               "text": "tools",
+              "type": "number"
+            },
+            {
+              "selector": "turn_cnt",
+              "text": "turns",
               "type": "number"
             }
           ]
@@ -259,6 +264,16 @@
               "selector": "message_cnt",
               "text": "messages",
               "type": "number"
+            },
+            {
+              "selector": "tools_cnt",
+              "text": "tools",
+              "type": "number"
+            },
+            {
+              "selector": "turn_cnt",
+              "text": "turns",
+              "type": "number"
             }
           ]
         }
@@ -305,8 +320,8 @@
     {
       "id": 4,
       "type": "table",
-      "title": "Declared tools (JSON)",
-      "description": "The declared tools as indented JSON (the tools_pretty field from ?pretty=1). Empty [] when the session never declared any tools. Click the cell inspect icon for a full-height formatted view.",
+      "title": "Declared tools (JSON, by hash)",
+      "description": "Every unique tools declaration of the session, keyed by hash (the tools_pretty field from ?pretty=1). Each turn refers to the declaration it sent by this hash. Empty {} when the session never declared any tools. Click the cell inspect icon for a full-height view.",
       "datasource": {
         "type": "yesoreyeram-infinity-datasource",
         "uid": "${DS_INFINITY}"
@@ -375,14 +390,14 @@
     {
       "id": 5,
       "type": "table",
-      "title": "Dialog — messages (JSON)",
-      "description": "The full dialog as indented JSON (the messages_pretty field from ?pretty=1) in the OpenAI messages format: system/user/assistant turns, assistant tool_calls made during the dialog, and the role:\"tool\" results they returned. The final assistant turn is included. Click the cell inspect icon for a full-height formatted view.",
+      "title": "Messages (JSON, by hash)",
+      "description": "Every unique message of the session, keyed by hash, in the order turns first reference them (the messages_pretty field from ?pretty=1): system/user/assistant messages, assistant tool_calls, role:\"tool\" results and the model's answers. Each message is stored once, however many requests resent it. Click the cell inspect icon for a full-height view.",
       "datasource": {
         "type": "yesoreyeram-infinity-datasource",
         "uid": "${DS_INFINITY}"
       },
       "gridPos": {
-        "h": 24,
+        "h": 18,
         "w": 24,
         "x": 0,
         "y": 36
@@ -410,6 +425,76 @@
             {
               "selector": "messages_pretty",
               "text": "messages",
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "left",
+            "cellOptions": {
+              "type": "auto",
+              "wrapText": true
+            },
+            "filterable": false,
+            "inspect": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": false,
+        "cellHeight": "lg",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "countRows": false,
+          "fields": ""
+        }
+      }
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Turns (JSON)",
+      "description": "Every exchange of the session in start order (the turns_pretty field from ?pretty=1): input is the list of message hashes the client sent, output the hash of the model's answer (null when the exchange failed), tools the hash of the declaration it sent, plus model, params, finish_reason, usage, ttft/e2e, delivery and error.",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "${DS_INFINITY}"
+      },
+      "gridPos": {
+        "h": 18,
+        "w": 24,
+        "x": 0,
+        "y": 54
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "${DS_INFINITY}"
+          },
+          "type": "json",
+          "source": "url",
+          "format": "table",
+          "parser": "backend",
+          "url": "/gateway/session/${session_id}?pretty=1",
+          "url_options": {
+            "method": "GET",
+            "data": "",
+            "body_type": "raw"
+          },
+          "root_selector": "",
+          "filters": [],
+          "columns": [
+            {
+              "selector": "turns_pretty",
+              "text": "turns",
               "type": "string"
             }
           ]
@@ -487,6 +572,6 @@
   "timezone": "",
   "title": "Gateway / Session Viewer",
   "uid": "gateway-session-viewer",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }

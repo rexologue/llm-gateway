@@ -138,8 +138,6 @@ def create_app_state(settings: Settings) -> AppState:
         prefix=settings.session_store_key_prefix,
         ttl_sec=settings.session_store_ttl_sec,
         max_connections=settings.session_store_max_connections,
-        max_record_bytes=settings.session_store_max_record_bytes,
-        write_attempts=settings.session_store_write_attempts,
         enabled=settings.sessions_enabled,
         breaker_failures=settings.valkey_breaker_failures,
         breaker_cooldown_sec=settings.valkey_breaker_cooldown_sec,

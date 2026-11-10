@@ -1,4 +1,4 @@
-"""Async Valkey storage helpers for JSON values."""
+"""Async Valkey access guarded by a circuit breaker."""
 
 from __future__ import annotations
 
@@ -67,7 +67,7 @@ def _guarded_iter(method: Callable[..., Any]) -> Callable[..., Any]:
 
 
 class ValkeyJsonStore:
-    """Async Valkey storage for JSON-compatible values.
+    """Async Valkey access for the gateway's session keys.
 
     Every call is guarded by a breaker. Without it an unreachable Valkey costs
     ``socket_connect_timeout`` seconds *per call* - and the gateway makes two of
@@ -87,7 +87,7 @@ class ValkeyJsonStore:
         breaker_failures: int = 3,
         breaker_cooldown_sec: float = 30.0,
     ) -> None:
-        """Initialize JSON storage backed by Valkey."""
+        """Initialize Valkey access."""
 
         self.prefix = prefix
         self.default_ttl_sec = max(1, int(default_ttl_sec))
@@ -134,8 +134,8 @@ class ValkeyJsonStore:
     def _breaker_record(self, *, failed: bool) -> None:
         """Count one call outcome, opening the breaker on repeated failure.
 
-        A ``WatchError`` is not counted: it means Valkey answered and the record
-        changed underneath an optimistic write, which is contention, not an
+        A ``WatchError`` is not counted: it means Valkey answered and a watched
+        key changed underneath a transaction, which is contention, not an
         outage.
         """
 
@@ -155,17 +155,29 @@ class ValkeyJsonStore:
         return f"{self.prefix}{record_id}"
 
 
-    def record_id_from_key(self, key: bytes | str) -> str:
-        """Return the unprefixed record id encoded in a Valkey key."""
-
-        key_text = key.decode("utf-8") if isinstance(key, bytes) else key
-        return key_text.removeprefix(self.prefix)
-
-
     async def close(self) -> None:
         """Close the underlying Valkey client."""
 
         await self.redis.aclose()
+
+
+    @_guarded
+    async def execute(
+        self,
+        build: Callable[[Any], None],
+        *,
+        transaction: bool = True,
+    ) -> list[Any]:
+        """Queue commands on one pipeline, send them in one round trip.
+
+        With ``transaction`` the batch runs as MULTI/EXEC, so nothing else is
+        interleaved and either every command applies or none does. ``build``
+        receives the pipeline and only queues commands on it.
+        """
+
+        async with self.redis.pipeline(transaction=transaction) as pipe:
+            build(pipe)
+            return await pipe.execute()
 
 
     @_guarded
@@ -177,79 +189,6 @@ class ValkeyJsonStore:
             return None
 
         return orjson.loads(raw)
-
-
-    @_guarded
-    async def set(
-        self,
-        record_id: str,
-        value: JsonValue,
-        *,
-        ttl_sec: int | None = None,
-        keep_ttl: bool = False,
-        no_ttl: bool = False,
-    ) -> None:
-        """Store a JSON value under the given unprefixed id."""
-
-        if ttl_sec is not None and keep_ttl:
-            raise ValueError("ttl_sec and keep_ttl cannot be used together")
-
-        if no_ttl and (ttl_sec is not None or keep_ttl):
-            raise ValueError("no_ttl cannot be used with ttl_sec or keep_ttl")
-
-        payload = orjson.dumps(value)
-        key = self.key(record_id)
-
-        if keep_ttl:
-            await self.redis.set(key, payload, keepttl=True)
-        elif no_ttl:
-            await self.redis.set(key, payload)
-        else:
-            effective_ttl = ttl_sec if ttl_sec is not None else self.default_ttl_sec
-            await self.redis.set(key, payload, ex=effective_ttl)
-
-
-    @_guarded
-    async def update(
-        self,
-        record_id: str,
-        mutator: Callable[[JsonValue | None], JsonValue],
-        *,
-        ttl_sec: int | None = None,
-        max_attempts: int = 5,
-    ) -> bool:
-        """Apply a mutator to one JSON value atomically.
-
-        Read-modify-write over a plain GET/SET loses concurrent writes: two
-        writers both read the old value and the later SET overwrites the
-        earlier one. This runs the mutator inside WATCH/MULTI/EXEC, so a value
-        that changed underneath us aborts the transaction and the mutator is
-        replayed on the fresh value. The mutator must therefore be free of side
-        effects outside the value it returns.
-        """
-
-        key = self.key(record_id)
-        effective_ttl = ttl_sec if ttl_sec is not None else self.default_ttl_sec
-
-        for _attempt in range(max(1, max_attempts)):
-            async with self.redis.pipeline(transaction=True) as pipe:
-                await pipe.watch(key)
-
-                raw = await pipe.get(key)
-                current = orjson.loads(raw) if raw is not None else None
-                updated = mutator(current)
-
-                pipe.multi()
-                pipe.set(key, orjson.dumps(updated), ex=effective_ttl)
-
-                try:
-                    await pipe.execute()
-                    return True
-
-                except WatchError:
-                    continue
-
-        return False
 
 
     @_guarded
@@ -284,45 +223,6 @@ class ValkeyJsonStore:
 
 
     @_guarded
-    async def delete(self, record_id: str) -> bool:
-        """Delete one record by id."""
-
-        return bool(await self.redis.delete(self.key(record_id)))
-
-
-    @_guarded
-    async def persist(self, record_id: str) -> bool:
-        """Remove expiration from one record."""
-
-        return bool(await self.redis.persist(self.key(record_id)))
-
-
-    @_guarded
-    async def exists(self, record_id: str) -> bool:
-        """Return whether a record exists."""
-
-        return bool(await self.redis.exists(self.key(record_id)))
-
-
-    @_guarded
-    async def ttl(self, record_id: str) -> int | None:
-        """Return remaining TTL in seconds, or None when absent or persistent."""
-
-        value = await self.redis.ttl(self.key(record_id))
-        if value is None or value < 0:
-            return None
-
-        return int(value)
-
-
-    @_guarded
-    async def count_all(self) -> int:
-        """Count all keys in the current logical database."""
-
-        return int(await self.redis.dbsize())
-
-
-    @_guarded
     async def count_matching(self, pattern: str | None = None) -> int:
         """Count keys matching a Valkey pattern."""
 
@@ -353,39 +253,3 @@ class ValkeyJsonStore:
 
             if cursor == 0:
                 break
-
-
-    @_guarded_iter
-    async def iter_states(
-        self,
-        pattern: str | None = None,
-        *,
-        count: int = 100,
-    ) -> AsyncIterator[tuple[bytes | str, JsonValue]]:
-        """Iterate over matching keys and parsed JSON values."""
-
-        cursor = 0
-        match = pattern or f"{self.prefix}*"
-
-        while True:
-            cursor, keys = await self.redis.scan(cursor=cursor, match=match, count=count)
-            if keys:
-                values = await self.redis.mget(keys)
-                for key, raw in zip(keys, values):
-                    if raw is not None:
-                        yield key, orjson.loads(raw)
-
-            if cursor == 0:
-                break
-
-
-    async def iter_values(
-        self,
-        pattern: str | None = None,
-        *,
-        count: int = 100,
-    ) -> AsyncIterator[tuple[bytes | str, JsonValue]]:
-        """Alias for iter_states."""
-
-        async for item in self.iter_states(pattern=pattern, count=count):
-            yield item

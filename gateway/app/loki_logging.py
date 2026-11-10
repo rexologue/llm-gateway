@@ -71,19 +71,15 @@ class LokiRequestContext:
         *,
         warn_reason: str,
         delivery: str,
-        message_cnt: int,
         turn_cnt: int,
-        dropped_cnt: int,
     ) -> None:
-        """Write a warning event about a transcript write that needed a decision."""
+        """Write a warning event about a session write worth a look."""
 
         await self.logger.log_session_write(
             self,
             warn_reason=warn_reason,
             delivery=delivery,
-            message_cnt=message_cnt,
             turn_cnt=turn_cnt,
-            dropped_cnt=dropped_cnt,
         )
 
 
@@ -253,16 +249,14 @@ class GatewayLokiLogger:
         *,
         warn_reason: str,
         delivery: str,
-        message_cnt: int,
         turn_cnt: int,
-        dropped_cnt: int,
     ) -> None:
-        """Write a warning event for a transcript write worth an operator's attention.
+        """Write a warning event for a session write worth an operator's attention.
 
         Successful writes stay silent - they are the normal case and the metrics
-        already count them. This event exists for the ones that had to give
-        something up: a record trimmed to fit, a history the client rewrote, a
-        turn the gateway could not persist at all.
+        already count them. This event exists for the ones that lost something:
+        a turn the gateway could not persist at all, or one whose drain was cut
+        short by its time or size budget.
         """
 
         event = self._base_event(
@@ -276,9 +270,7 @@ class GatewayLokiLogger:
                 {
                     "warn_reason": warn_reason,
                     "session_delivery": delivery,
-                    "session_message_cnt": message_cnt,
-                    "session_turn_cnt": turn_cnt,
-                    "session_dropped_cnt": dropped_cnt or None,
+                    "session_turn_cnt": turn_cnt or None,
                 }
             )
         )

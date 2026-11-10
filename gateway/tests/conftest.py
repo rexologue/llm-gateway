@@ -1,8 +1,8 @@
 """Shared helpers for gateway unit tests.
 
 The gateway is exercised here without a live backend or Valkey: response
-reading is a synchronous state machine and transcript merging is pure, so both
-are testable from plain functions. Anything that needs a real backend or a real
+reading is a synchronous state machine and session blocks are built and
+assembled by pure functions, so both are testable from plain functions. Anything that needs a real backend or a real
 Valkey lives in the smoke suites under ``deploy/tests/smoke``.
 """
 
